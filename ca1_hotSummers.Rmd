@@ -1,0 +1,188 @@
+---
+title: "Coding Assignment 1 ~ Are Summers Getting Hotter?"
+date: "Due Tuesday, Sept. 3rd, 2024 via GitHub"
+output: pdf_document
+geometry: top=1in, bottom=1in, left=1in, right=1in
+---
+
+***  
+
+Our first homework assignment will explore basic to intermediate R programming skills needed to manipulate, alter, and plot tabular data in R. You will be graded on your ability to produce clean, well commented R code that performs the tasks listed below. When you are done, submit your assignment by pushing your final scripts, etc to your GitHub repository.
+
+Keep in mind this is an assignment, not an exam, and the goal is for you to learn. Please do not hesitate to ask if you have questions or need help. Feel free to work with other students using the course `Slack` channel or other means. Use of `CoPilot` and other AI code generating tools is allowed, but make sure to comment your code such that someone else can follow it and please *also indicate where AI was used*. If you used AI, you should also make sure that you fully understand the code you are submitting. 
+
+### Background
+You are at a family gathering and your grandfather claims that summer temperatures are hotter now than they were when he was a kid growing up in Canada in the 1930s. Your (crazy) uncle from Florida disagrees and argues that summers have always been hot, it is *summer!?!* after all. 
+
+Your inner data scientist thinks this is an empirical question that you can answer with data. Your assignment is to download, plot, and interpret temperature data from three locations of your choosing to answer the question: Are summers getting hotter and do the temperature trends seem to differ geographically? The only requirement is that the three locations you select should be from one high-, one mid-, and one low-latitude location somewhere within the coverage of the climate data. Speaking of which...
+
+For climate data, we will download measurements from the [DayMet data set](https://daymet.ornl.gov/) (https://daymet.ornl.gov/, which provides historical daily(!) gridded (i.e., raster) weather data for North America at a 1-km spatial resolution and spanning the last 40 or so years. You can download the data directly from R using the `daymetr` package, as described below.
+
+Useful libraries for completing this assignment include `daymetr`, `tidygeocoder`, `dplyr`, and `ggplot2`. You may need to install these packages if you have not already done so.
+
+```{r, echo=TRUE, message=FALSE}
+library(daymetr) # easy downloads of DayMet climate data
+library(dplyr) # data manipulation
+library(tidygeocoder) # geocoding of addresses
+library(ggplot2) # plotting
+```
+
+### Instructions
+
+1. Create a `data frame` containing two columns and three rows to hold the address information for your three selected locations. The two columns should be one holding a location name and the second column should contain the physical address with enough detail that the location can be geocoded using the `tidygeocoder::geocode` function.   
+
+Select three locations that span from high-latitudes (polar) to low-latitudes (equatorial). The addresses can have as much detail as street numbers, but at a minimum city, state, and country are probably required for most places (see `?tidygeocoder::geocode` for details). Here is an example of how you might format the data frame:
+
+```{r, echo=F}
+# Create a data frame with location names and addresses
+myThreeLocs <- data.frame(
+  location = c("High Latitude Location (Juneau)", "Mid Latitude Location (Morehead City)", "Low Latitude Location (Miami)"),
+  address = c("Juneau, Alaska, USA", "Morehead City, North Carolina, USA", "Miami, Florida, USA"),
+  stringsAsFactors = FALSE
+)
+
+# Display the data frame
+print(myThreeLocs)
+```
+
+2. Once you have selected your three locations, use the `tidygeocoder::geocode` function to geocode (i.e., get the latitude-longitude coordinates of) the three addresses in your data frame.
+```{r}
+# Geocode the addresses in the data frame
+geoloc <- myThreeLocs %>%
+  geocode(address, method = 'osm') # Using OpenStreetMap as the geocoding service
+
+# Display the resulting data frame with latitude and longitude
+print(geoloc)
+```
+
+3. Now that you have the coordinates of your locations, you can use the `daymetr::download_daymet` function to download [DayMet climate data](https://daymet.ornl.gov/) (https://daymet.ornl.gov/) for each of your three locations directly into R. Use `1980` and `2020` as the start and end years for the download. Note, however, that the `download_daymet` function retrieves data for only one location at a time. You could run the function three times, once for each location, but that is inefficient and the programming gods will mock you. To overcome this limitation, write a `for-loop` or use one of the `apply`-family of functions to download data for all three locations.   
+
+HINT: The `for-loop` (or `apply` function) should iterate over the rows of the object produced in step #2 and download the Daymet data for each location. If you need help, ask.  
+```{r}
+# Define the start and end years
+start_year <- 1980
+end_year <- 2020
+
+# Use lapply to download data for each location
+daymet_data_list <- lapply(1:nrow(geoloc), function(i) {
+  download_daymet(
+    lat = geoloc$lat[i],
+    lon = geoloc$long[i],
+    start = start_year,
+    end = end_year,
+    internal = TRUE
+  )
+})
+
+# Optionally, you can name each list element by location
+names(daymet_data_list) <- geoloc$location
+
+# Check the structure of the downloaded data
+str(daymet_data_list)
+```
+
+
+4. The downloaded Daymet data will have a row for every day between January 1, 1980 and December 31, 2020 and for each of the seven climate variables provided by DayMet - that's about 108,000 rows! You only need temperature data for this assignment, so the other variables can be removed. Next, aggregate the temperature data to calculate an average for the summer season for each year. You can use the average of maximum and minimum temperatures if you wish (which would be mean daily temperature), or just use maximum temperature for your calculations. For this assignment, let's assume summer includes day number 170-260 of each year. To perform the aggregation, you have a number of options here, including the use of the `dplyr` package to group the data and calculate averages.
+```{r 4. Summer Average}
+# Define a function to calculate the average summer temperature for each year
+summer.avg <- function(daymet_data) {
+  daymet_data$data %>%
+    filter(yday >= 170 & yday <= 260) %>% # 170 is Julian day for June 20, 260 for September 14
+    group_by(year) %>% # Group by year
+    summarize(
+      avg_temp = mean((tmax..deg.c. + tmin..deg.c.) / 2, na.rm = TRUE) # Mean daily temperature
+      # avg_temp = mean(tmax..deg.c., na.rm = TRUE) # Uncomment this line if you want only max temperature
+    )
+
+  }
+
+# Apply the function to each location's data in the list
+summer.avg.list <- lapply(daymet_data_list, summer.avg)
+
+# Optionally, name each list element by location
+names(summer.avg.list) <- names(daymet_data_list)
+
+# Check the results for the first location
+print(summer.avg.list[[1]])
+```
+
+
+5. Create a plot that shows the average summer temperature for each location over time. Ideally you would use the `ggplot2` package to create the plot, but if you prefer, the base-R `plot` functions can be used as well. The plot should have three lines, one for each location, showing the average summer temperature vs. year. Add proper axis labels, a plot title, and a legend that identifies each location. Formatting specifics:
+
+* Graph the annual mean temperature in summer for each location. Ideally all three lines would be on the same plot, but plotting each location in a separate panel is acceptable.
+* Add a smooth line with `geom_smooth()` to show the trend over time. This is much more difficult to do using the base-R plotting functions.
+* Add informative axis labels
+* Add a graph title
+* Save a graphic to a png file using something like `png()` and `dev.off()` or `ggsave`.
+```{r}
+# rbind for rows and locations
+summer_average_temps_for_plot <- bind_rows(summer.avg.list, .id = "location")
+#Plot stuff
+summerplot <- ggplot(summer_average_temps_for_plot, aes(x = year, y = avg_temp, color = location)) +
+  geom_line() +  # Line plot for each location
+  geom_smooth(se = TRUE) +  # Smooth trend line, with standard errors (fancy!)
+  labs(
+    title = "Average Summer Temperature With Time",
+    x = "Year",
+    y = "Average Summer Temperature (°C)",
+    color = "Location"
+  ) +
+  theme_minimal()
+#print it
+summerplot
+#save it as a picture
+ggsave("average_summer_temperature.png", width = 8, height = 6)
+
+```
+
+
+
+6. Answer these questions. What do you tell your grandfather and your uncle? *Are* summer getting hotter? How do the temperature trends differ by latitude? What additional tests / visualizations could you do?
+
+The average summer temperatures do seem to be increasing with time in the past 40 years. There seems to be about a degree of increase in the average summer temperatures trend at the lowest latitude, and the average temperature trend point in 2020 is outside of one standard error interval for the average in 1980, so this increase may be significant. As we move upwards in latitude, the impact is a little more variable overall and the effect is more sinusoidal than linear, but the temperature at the beginning of the trend in the time series is about a half a degree cooler than at the end of the time series, but this may be within the standard error interval. At the highest latitude, the sinusoidal trend is a bit more pronounced, and the averages vary more than at lower latitudes; however, the last measurement in the trend is also about a degree higher than at the beginning of the time series. These sinusoidal trends may have some impact from the ENSO or NAO phenomena, but the overall trend seems to be increasing with time, we would have to apply an ARIMA time series model or some T-Tests to the data to be conclusive.
+
+
+
+### Extra time?
+If you have extra time (this is for fun, not a graded part of the assignment), repeat steps 4-6 above, but for minimum temperature in winter (days 350-60). How do mean winter temperature trends differ by latitude? Are the increases greater or less than changes in summer temperature?  
+```{r Extra Time, Winter Minimum}
+# Define a function to calculate the average summer temperature for each year
+winter.min <- function(daymet_data) {
+  daymet_data$data %>%
+    filter(yday >=350 & yday <= 360) %>% # 170 is Julian day for June 20, 260 for September 14
+    group_by(year) %>% # Group by year
+    summarize(
+      #avg_temp = mean((tmax..deg.c. + tmin..deg.c.) / 2, na.rm = TRUE) # Mean daily temperature
+       avg_temp = mean(tmin..deg.c., na.rm = TRUE) # minimum daily temperature
+    )
+}
+
+# Apply the function to each location's data in the list
+winter.min.list <- lapply(daymet_data_list, winter.min)
+
+# Optionally, name each list element by location
+names(winter.min.list) <- names(daymet_data_list)
+
+# Check the results for the first location
+print(winter.min.list[[1]])
+# rbind for rows and locations
+winter_min_temps_for_plot <- bind_rows(winter.min.list, .id = "location")
+#Plot stuff
+winterplot <- ggplot(winter_min_temps_for_plot, aes(x = year, y = avg_temp, color = location)) +
+  geom_line() +  # Line plot for each location
+  geom_smooth(se = TRUE) +  # Smooth trend line, with standard errors (fancy!)
+  labs(
+    title = "Minimum Winter Temperature With Time",
+    x = "Year",
+    y = "Minimum Winter Temperature (°C)",
+    color = "Location"
+  ) +
+  theme_minimal()
+#print it
+winterplot
+#save it as a picture
+ggsave("minimum_winter_temperature.png", width = 8, height = 6)
+
+```
+The effects are more dramatic, but this could be an effect of us using minimum temperature instead of average temperature. The effects are more evident in the polar region than the lowest latitude.
+*** 
