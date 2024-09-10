@@ -1,0 +1,286 @@
+---
+title: "Coding Assignment 2 ~ Working with Spatial Data in R"
+date: "Due Tuesday, Sept. 10th, 2024 via GitHub"
+output: pdf_document
+geometry: top=1in, bottom=1in, left=1in, right=1in
+---
+
+***  
+
+***Assignment:*** This coding assignment is designed to build your skills at working with, manipulating, and plotting spatial data in R. You are provided with a shapefile and must download a set of climate rasters and species occurrence data. You will then perform various tasks using these three datasets. You will be graded on your ability to produce clean, well commented R code that performs the tasks listed below. When you are done, submit your assignment by pushing your final scripts, etc to your GitHub repository.
+  
+Keep in mind this is an assignment, not an exam, and the goal is for you to learn. Please do not hesitate to ask if you have questions or need help. Feel free to work with other students using the course `Slack` channel or other means. Use of `CoPilot` and other AI code generating tools is allowed, but make sure to comment your code such that someone else can follow it and please *also indicate where AI was used*. If you used AI, you should also make sure that you fully understand the code you are submitting. 
+
+```{r, echo=FALSE, out.width="49%", out.height="30%", fig.cap="A small grass tree in Western Australia and a range map of Xanthorrhoea australis from the Australasian virtual herbarium. Photo credit: MC Fitzpatrick", fig.show='hold', fig.align='center'}
+knitr::include_graphics(c("/Users/Ray.Mroch.NMFS/Documents/Research/Coursework/MEES 698C Spatial Ecology/HW1/IMG_3291.jpeg","/Users/Ray.Mroch.NMFS/Documents/Research/Coursework/MEES 698C Spatial Ecology/HW1/avhMap.png"))
+```
+
+1. Use the `geodata::worldclim_global` function to download the [Worldclim](https://www.worldclim.org/) (https://www.worldclim.org/) global climate data set at 5 arc-minute resolution. For this assignment, we will be working with bioclimatic variables (see `?worldclim_global` in the `geodata` package for details as well as the Worldclim website for definitions). *Note that these data are somewhat large, so downloading them while on a decent internet connection is a good idea. Also, be careful if you download these into your github repository! If so, you probably don't want to track these large files, do you?* 
+```{r}
+#need packages
+library(geodata)
+library(raster)
+library(ggplot2)
+library(viridis)
+library(sf)
+library(terra)
+library(patchwork)
+# Download bioclimatic variables at 5 arc-minute resolution
+bioclim_data <- worldclim_global(var = "bio", res = 5, path = "C:/Users/Ray.Mroch.NMFS/Documents/Research/Coursework/MEES 698C Spatial Ecology/HW1")
+
+```
+
+
+2. Make a raster stack containing these four bioclimatic variables: `bio10`, `bio11`, `bio18`, and `bio19`. Next, crop the raster stack to the *outline of Australia* **not the extent** using the shapefile provided with this assignment. Note that the shapefile also contains New Zealand, which is not part of Australia, so you will have to do something about that before you perform the cropping operation, among other steps.
+```{r Question 2}
+#need some packages
+library(terra)
+library(geodata)
+library(raster)
+library(sf)
+
+# Download bioclimatic variables
+#res = 5 means 5 arc-minute resolution
+bioclim_data <- geodata::worldclim_global(var = "bio", res = 5, path = "C:/Users/Ray.Mroch.NMFS/Documents/Research/Coursework/MEES 698C Spatial Ecology/HW1")
+
+# stack layers bio10, bio11, bio18, and bio19
+bioclim_stack <- c(bioclim_data[[10]], bioclim_data[[11]], bioclim_data[[18]], bioclim_data[[19]])
+names(bioclim_stack) <- c("bio10", "bio11", "bio18", "bio19")
+
+# Stralya shapefile, mate! ... um, but it contains Kiwi crap, too
+australia_shapefile <- vect("C:/Users/Ray.Mroch.NMFS/Documents/Research/Coursework/MEES 698C Spatial Ecology/HW1/oz_nz_aea.shp")
+
+# Filter out New Zealand, now it's only Australia
+australia_only <- australia_shapefile[australia_shapefile$NAME == "Australia", ]
+
+# Ensure CRS of shapefile matches the raster
+australia_only <- project(australia_only, crs(bioclim_stack))
+
+# Crop and mask the raster stack to the Australia shapefile
+bioclim_australia <- crop(bioclim_stack, australia_only)
+bioclim_australia <- mask(bioclim_australia, australia_only)
+
+#plot it
+plot(bioclim_australia)
+
+```
+
+
+
+3. Use the `geodata::sp_occurrence` function to download records for the Austral grass tree (*Xanthorrhoea australis*). Clean up the resulting data frame by removing records without geographic coordinates, those that fall outside the Australian mainland, and any other suspicious records that suggest errors. Convert the data to an `sf` object with the correct CRS and containing only these attributes: `acceptedScientificName`, `institutionCode`, and `year`. Save your `sf` object as a shapefile.   
+```{r Question 3}
+#load packages
+library(dplyr)
+library(rgbif)
+library(ggplot2)
+
+#Download Xanthorrhoea australis records
+xanth_occ <- occ_search(scientificName = "Xanthorrhoea australis", 
+                        fields = c("key", "acceptedScientificName", "decimalLongitude", "decimalLatitude", "year", "institutionCode"))
+
+
+# Convert to df
+xanth_occ_df <- as.data.frame(xanth_occ$data)
+
+# Remove records without geocoords
+xanth_occ_clean <- xanth_occ_df %>%
+  filter(!is.na(decimalLongitude), !is.na(decimalLatitude))
+
+
+# Convert cleaned data to an `sf` object with the correct CRS
+xanth_sf <- st_as_sf(xanth_occ_clean, 
+                     coords = c("decimalLongitude", "decimalLatitude"), 
+                     crs = 4326,  
+                     remove = FALSE)
+#overlay with australia
+australia_sf <- st_as_sf(australia_only)
+xanth_sf <- st_intersection(xanth_sf, australia_sf)
+
+#plot to look for weirdos
+plot(xanth_sf)
+#NSW seems to be bad at this or something, let's remove
+xanth_sf_clean <- xanth_sf[xanth_sf$institutionCode != "NSW Dept of Planning, Industry and Environment", ]
+#check to be sure ...
+table(xanth_sf_clean$institutionCode)
+# Select relevant attributes
+xanth_sf_clean <- xanth_sf_clean %>%
+  select(acceptedScientificName = acceptedScientificName, institutionCode = institutionCode, year)
+
+xanth_plot <- ggplot() +
+  geom_sf(data = australia_sf, fill = NA, color = "blue") +
+  geom_sf(data = xanth_sf_clean, aes(color = year), size = 2) +
+  labs(title = "Xanthorrhoea australis Occurrences in Australia") +
+  theme_minimal()
+
+#Save the cleaned `sf` object as a shapefile
+st_write(xanth_sf_clean, "Xanthorrhoea_australis_clean.shp", append = FALSE)
+
+
+```
+
+4. Make a simple map of the cleaned species occurrence records from GBIF, using a color ramp or symbolization scheme to indicate *the year the record was collected*. Make sure to include the polygon of Australia and plot `bio10` as the background. **NOTE:** *All data in this map should be in the original projection of the Australia & New Zealand shapefile (i.e., not WGS84)*. Save the transformed `bio10` raster as a GeoTiff. 
+```{r Question4}
+
+# Load the bio10 raster
+bio10 <- bioclim_stack[[1]] #this is a spatraster
+
+# put bio10 into australia CRS
+bio10_proj <- project(bio10, crs(australia_sf))  # Reproject raster to match Australia shapefile
+
+# Too much data, mask to only Australia Bio10
+bio10_masked <- mask(bio10_proj, vect(australia_sf))  # Convert sf to SpatVector using vect()
+
+# Convert bio10 to a data frame for ggplot2
+bio10_df <- as.data.frame(bio10_masked, xy = TRUE) 
+#name bio10 "bio10"
+colnames(bio10_df)[3] <- "bio10"  # Rename the column for bio10 values
+
+
+#attempt to plot
+ggplot() +
+  # Plot the raster data (bio10)
+  geom_tile(data = bio10_df, aes(x = x, y = y, fill = bio10)) +
+  scale_fill_viridis_c(name = "bio10", option = "viridis") +  # Color scale for bio10
+    # Plot the outline of Australia
+  geom_sf(data = australia_sf, fill = NA, color = "black", linetype = "solid", size = 0.5) +
+#add in years of observation
+    geom_sf(data = xanth_sf_clean, aes(color = year), size = 2) +
+# better contrast in color  
+  scale_color_gradient(name = "Year of Observation", low = "yellow", high = "red") +  # Contrast with warm colors
+  
+  # Add labels and theme
+  labs(
+    title = "Bio10 with Australia Outline",
+    x = "Longitude", y = "Latitude"
+  ) +
+  theme_minimal() +
+  theme(legend.position = "right")
+
+```
+
+
+5. Use the cleaned species occurrence data to extract the values of the four bioclimatic variables from the raster stack and make some plots to compare the climate conditions where this species has been observed to the broader climate of Australia. A few hints: Have a look at the `terra::spatSample` function. To perform the comparison between climates where the species is present and Australia more broadly, you have a number of options. You might try scatter plots, box plots, or histograms, but you do not need to do any statistical analyses (in other words, see what you can learn from simple plots alone - that's enough for this assignment). **Answer the questions: **How does the climate where *X. australis* has been observed differ from that of Australian climates more generally? What does this tell us about the species' habitat preferences?
+```{r}
+# Ensure species points and raster are in the same CRS
+xanth_sf_clean_albers <- st_transform(xanth_sf_clean, crs(bioclim_australia))
+
+# Extract climate data from bioclimatic variables at species observation points
+xanth_climate_values <- terra::extract(bioclim_australia, xanth_sf_clean_albers)
+#add column for source
+xanth_climate_values$ID <- c("xanth")
+# Combine the extracted values with the species data
+xanth_climate_data <- cbind(st_drop_geometry(xanth_sf_clean_albers), xanth_climate_values)
+# Sample random points across Australia to get broader climate data
+set.seed(123)  # For reproducibility
+australia_climate_sample <- terra::spatSample(bioclim_australia, size = 1000, method = "random", na.rm = TRUE) 
+australia_climate_sample$ID <- c("climate")
+ausplot.df <- rbind(xanth_climate_values, australia_climate_sample)
+
+# Boxplot to compare climate variable bio10
+#From Website
+#BIO10 = Mean Temperature of Warmest Quarter
+#BIO11 = Mean Temperature of Coldest Quarter
+#BIO18 = Precipitation of Warmest Quarter
+#BIO19 = Precipitation of Coldest Quarter
+bwbio10<-ggplot(ausplot.df, aes(x = ID, y = bio10)) +
+  geom_boxplot() +
+  labs(title = "Comparison of bio10 Between X. australis and Australian Climate",
+       x = "Source", y = "bio10 (mean temperature of warmest quarter)") +
+  theme_minimal()
+bwbio11<-ggplot(ausplot.df, aes(x = ID, y = bio11)) +
+  geom_boxplot() +
+  labs(title = "Comparison of bio11 Between X. australis and Australian Climate",
+       x = "Source", y = "bio11 (mean temperature of coldest quarter)") +
+  theme_minimal()
+bwbio18<-ggplot(ausplot.df, aes(x = ID, y = bio18)) +
+  geom_boxplot() +
+  labs(title = "Comparison of bio18 Between X. australis and Australian Climate",
+       x = "Source", y = "bio18 (precip of warmest quarter)") +
+  theme_minimal()
+bwbio19<-ggplot(ausplot.df, aes(x = ID, y = bio19)) +
+  geom_boxplot() +
+  labs(title = "Comparison of bio19 Between X. australis and Australian Climate",
+       x = "Source", y = "bio19 (precip of warmest quarter)") +
+  theme_minimal()
+
+(bwbio10 + bwbio11) / (bwbio18 + bwbio19) + # Need to sort this out
+    plot_annotation(tag_levels = 'A')
+
+# Scatter plot to compare bio10 vs bio11 (or any other combination)
+
+scatter10.11 <- ggplot(ausplot.df, aes(x = bio10, y = bio11, color = ID)) +
+  geom_point() +
+  labs(title = "Scatter Plot of bio10 vs bio11",
+       x = "bio10 (mean temperature of warmest quarter)", 
+       y = "bio11 (mean temperature of coldest quarter)") +
+  theme_minimal()
+
+scatter10.18 <- ggplot(ausplot.df, aes(x = bio10, y = bio18, color = ID)) +
+  geom_point() +
+  labs(title = "Scatter Plot of bio10 vs bio18",
+       x = "bio10 (mean temperature of warmest quarter)", 
+       y = "bio18 (precip of warmest quarter)") +
+  theme_minimal()
+
+scatter10.19 <- ggplot(ausplot.df, aes(x = bio10, y = bio19, color = ID)) +
+  geom_point() +
+  labs(title = "Scatter Plot of bio10 vs bio11",
+       x = "bio10 (mean temperature of warmest quarter)", 
+       y = "bio19 (precip coldest quarter)") +
+  theme_minimal()
+
+scatter11.18 <- ggplot(ausplot.df, aes(x = bio11, y = bio18, color = ID)) +
+  geom_point() +
+  labs(title = "Scatter Plot of bio11 vs bio18",
+       x = "bio11 (mean temperature of coldest quarter)", 
+       y = "bio18 (precip of warmest quarter)") +
+  theme_minimal()
+
+scatter11.19 <- ggplot(ausplot.df, aes(x = bio11, y = bio19, color = ID)) +
+  geom_point() +
+  labs(title = "Scatter Plot of bio10 vs bio11",
+       x = "bio11 (mean temperature of coldest quarter)",
+       y = "bio19 (precip of coldest quarter)")  +
+  theme_minimal()
+
+scatter18.19 <- ggplot(ausplot.df, aes(x = bio18, y = bio19, color = ID)) +
+  geom_point() +
+  labs(title = "Scatter Plot of bio10 vs bio11",
+       x = "bio18 (precip of warmest quarter)", 
+       y = "bio19 (precip coldest quarter)") +
+  theme_minimal()
+(scatter10.11 + scatter18.19)
+
+#Showing the data like this make it seem that the x. australis organism is present in places with a relatively cooler mean temperature in the warmest quarter (<20C) and higher precipitation in the coldest quarter
+```
+
+
+6. Now for a challenge: Create a raster of the number of *X. australis* GBIF records in each 5' grid cell. You might try using the `terra::rasterize` function or perhaps by extracting the cell ID for each observation and counting the number of times each cell number is duplicated (indicating the number of observations in that cell, right?). This can be a tough one, so don't hesitate to check in if you get stuck.
+```{r Question 6}
+#x = the spatvector to use, y is the spatraster for the extent, field is what you wnat to colorize
+xanth_raster <- terra::rasterize(x = xanth_sf_clean, 
+                                 y = bioclim_data,
+                                 field = xanth_sf_clean$year, #needs to be a number, not a word or letter
+                                 fun = length) #Hopefully this will give the number in each raster
+#crop and mask data
+xanth_raster_aus <- crop(xanth_raster, australia_only)
+xanth_raster_aus <- mask(xanth_raster_aus, australia_only)
+
+# Kind of think this is done, but look up how to extract cell ID
+
+# Convert the raster to a data frame for ggplot2
+xanth_raster_df <- as.data.frame(xanth_raster_aus, xy = TRUE, na.rm = TRUE)
+
+# Now plot the raster
+xanth_raster_plot <- ggplot() +
+  geom_raster(data = xanth_raster_df, aes(x = x, y = y, fill = V1)) +  # Use 'V1' for raster values, geom_raster for full cell extent
+  geom_sf(data = australia_sf, fill = NA, color = "blue", size = 0.5) +  # Overlay Australia shapefile
+  scale_fill_viridis_c(option = "viridis", name = "Record Count") +  # Color scale for the raster
+  coord_sf() +  # Ensure proper projection and alignment
+  labs(title = "Number of Xanthorrhoea australis Records per 5' Grid Cell") +
+  theme_minimal()
+
+
+```
+
+*** 
