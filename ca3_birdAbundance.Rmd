@@ -1,0 +1,174 @@
+---
+title: "HW 3 ~ Scale & Autocorrelation"
+date: "Due Tuesday, Sept. 17th, 2024 via GitHub"
+output: pdf_document
+geometry: top=1in, bottom=1in, left=1in, right=1in
+---
+
+***  
+```{r Libraries}
+library(terra)   
+library(ggplot2) 
+library(viridis)
+library(raster)
+library(ncf)
+library(sp)
+library(gstat)
+library(sf)
+```
+
+***Assignment:*** This `R` coding assignment involves analyses of spatial patterns in bird abundance data using variograms and correlograms. You will be graded on your ability to produce clean, well commented `R` code that performs the tasks listed below. When you are done, submit your assignment by pushing your final scripts, etc to your GitHub repository.
+  
+Keep in mind this is an assignment, not an exam, and the goal is for you to learn. Please do not hesitate to ask if you have questions or need help. Feel free to work with other students using the course `Slack` channel or other means. Use of `CoPilot` and other AI code generating tools is allowed, but make sure to comment your code such that someone else can follow it and please *also indicate where AI was used*. If you used AI, you should also make sure that you fully understand the code you are submitting. 
+
+You are provided with a raster map (`carolinaWren.tif`) of estimated Carolina wren abundance in North America from the [eBird](https://ebird.org/) (https://ebird.org/) database. Your general tasks are to:  
+
+* Use correlograms to quantify and explore the spatial structure in these data.  
+* Use variograms to inform how you might go about designing a field sampling study in the hopes of minimizing autocorrelation in the data. 
+
+Perform the following tasks and answer the associated questions:
+
+1. Use the `terra::spatSample()` function to generate a `regular` spatial sample of Carolina wren abundance at about 300-500 locations. See Figure 1. To avoid sampling outside of the primary range of the Carolina wren (i.e., outside of where abundance is relatively high), to the extent possible limit sampling to the region where abundance is greater than zero (this does not have to be perfect, you will clean the samples in Step #2). The `terra::draw()` function might be useful to help you define the sampling extent, but use any approach that works for you.
+```{r Question 1}
+
+# Set working directory
+setwd("C:/Users/Ray.Mroch.NMFS/Documents/Research/Coursework/MEES 698C Spatial Ecology/HW1/HW1")
+
+# Load raster data
+wren_abundance <- rast("carolinaWren.tif")
+
+# Convert zero values to NA for future calculations
+wren_abundance[wren_abundance == 0] <- NA
+
+# Mask raster to exclude NAs
+wren_abundance_mask <- mask(wren_abundance, !is.na(wren_abundance))
+
+# Use the masked raster to sample points only where there is positive abundance
+sample_points <- spatSample(wren_abundance_mask, size = 400, method = 'random', na.rm = TRUE, values = FALSE, xy = TRUE) #<- this goes against my inclinations and instincts as a statistician to use a systematic search such as this, but this is how I interpreted "regular"
+
+# Convert sample points to a data frame
+sample_points_df <- as.data.frame(sample_points)
+colnames(sample_points_df) <- c("x", "y")
+
+# Convert raster to data frame for ggplot2
+raster_df <- as.data.frame(wren_abundance_mask, xy = TRUE)
+colnames(raster_df) <- c("x", "y", "abundance")
+
+# Plot the stuff
+samplot <- ggplot() +
+    # sample points, just where we know there to be wrens
+    geom_point(data = sample_points_df, aes(x = x, y = y), color = "red", size = 2) +
+    labs(title = "Carolina Wren Abundance with Sample Points") +
+    theme_minimal() +
+    theme(
+        axis.title = element_text(size = 14),
+        axis.text = element_text(size = 12),
+        legend.title = element_text(size = 12),
+        legend.text = element_text(size = 10)
+    )
+print(samplot)
+```
+
+
+
+2. Once you have generated the regular grid of samples, make a map that plots the raster of Carolina wren abundance and your sampling locations. Your plot should include only sampling locations that (i) have abundance greater than zero and (ii) overlap the land surface, as shown in Figure 2. In other words, do not plot any sampling locations that fall in the ocean or other bodies of water.
+```{r Question 2}
+
+#once more, with FEELING!
+#just kidding, overlay it onto the wren plots.
+
+wrenplot <- ggplot() +
+    # Add the raster layer
+    geom_tile(data = raster_df, aes(x = x, y = y, fill = abundance)) +
+    scale_fill_viridis_c(name = "Abundance") +  # Color scale for abundance
+    labs(title = "Carolina Wren Abundance with Sample Points") +
+  # sample points, just where we know there to be wrens
+    geom_point(data = sample_points_df, aes(x = x, y = y), color = "red", size = 2) +  
+    theme_minimal() +
+    theme(
+        axis.title = element_text(size = 14),
+        axis.text = element_text(size = 12),
+        legend.title = element_text(size = 12),
+        legend.text = element_text(size = 10)
+    )
+print(wrenplot)
+
+```
+
+3. Next, produce and plot a correlogram using your regular grid of abundance samples, filtered as described in Step #2. I have found the `ncf::correlog()` function to be one of the more easy methods to produce and plot correlograms in `R`. The following example code worked well for my samples (see note about `increment` however), but you should read the help file for the `ncf::correlog` function to understand the arguments and options and adjust for your samples as needed. In particular, you will need to select a value for the `increment` argument, which can be informed by the distances between sample locations and dividing the maximum distance by ~10-20. The maximum distance will depend on the particulars of your sampling grid, so you will need to determine the maximum distance on your own. Luckily there are numerous functions in `R` that will do that for you. For my data, the maximum distance was about 2800 km, but **do not simply use the increment I provide in the example below**, which does not follow the rule of thumb. I do suggest that you plot the correlogram using the increment I provide to get a sense of how the correlogram responds to changes in increment however. Note, you may need to install the `ncf` package if you have not already done so. Also, recall what we learned about CRSs and distances. You do not need to project/transform anything, but you should check the units of the CRS used for the Carolina wren data and confirm that distances in these units makes sense.   
+
+```{r, Question 3}
+# Calculate distances between all sample points
+#this is in the Mollweide projection, and is specified in meters, so no longlat
+dist_matrix <- sp::spDists(as.matrix(sample_points_df[, c("x", "y")]), longlat = FALSE)
+
+# Find the maximum distance
+max_distance <- max(dist_matrix)
+print(max_distance)
+
+# The question says 10-20, so let's start with 15
+increment <- max_distance / 10
+print(increment)
+
+# Load the ncf package
+library(ncf)
+
+# Compute the correlogram
+cor <- correlog(x = sample_points_df$x,   
+                y = sample_points_df$y,   
+                z = raster::extract(wren_abundance_mask, sample_points_df),  
+                increment = increment,    # the calculated increment
+                resamp = 1000)            # number of permutations for the null model
+
+# Plot the correlogram
+plot(cor)
+```
+
+Answer these questions:  
+
+* How does the correlogram change as the `increment` argument is changed?   
+
+The correlogram decreases pretty steadily until about 2500000, then increases after. The changing of the increment moves the lowest negative correlation around between 2,500,000-3,000,000 and seems to decrease the negative correlation minimum a bit with increasing incremental size.
+
+* What is your interpretation of the resulting plot? In other words, what does it tell you about the spatial pattern in abundance of the Carolina wren?  
+
+It tells me that the wrens are a bit autocorrelated. We are likely to find wrens adjacent to other wrens and an absence of wrens near other wren-depleted areas. After a certain distance, there is a decline to a negative correlation. I would imagine that there is a social component to this, but I am not up on bird law. I would conclude that wren habitat is rather patchy or that there are big attractions to the wrens that causes them to conglomerate.
+
+* Does the correlogram look different if you sample random locations instead of using a regularly spaced grid of samples?   
+Yes, most of the observations are positively correlated. This is likely because the sampling locations were taken at a less-regular method, allowing for more noise. This would increase the random aspect of the model, decreasing the bias from regularity.
+
+Keep in mind that we have VERY good data for these analyses, including a detailed raster map of abundance in nearly every location throughout the geographic range. Data this good are unusual (but becoming more common!) - so when answering these questions, try to think about what you could learn *from just the correlogram, assuming you had abundance data at a few dozen locations only instead of a detailed map*. This paper will be helpful to guide your interpretation (provided as a pdf with this assignment):  
+
+`Brown, James H., David W. Mehlman, and George C. Stevens.` *Spatial variation in abundance.* `Ecology 76.7 (1995): 2028-2043`  
+
+4. Next, use the `gstat::variogram()` function to calculate and plot a variogram(s) from the abundance data. Note that you are not required to fit a statistical model, but you can if you want. Using the variogram, answer these two questions:
+```{r Question 4}
+# WE need abundance, though
+abundance <- extract(wren_abundance_mask, sample_points_df[, c("x", "y")])#pull out abundance
+sample_points_df$abundance <- as.numeric(abundance$carolinaWren) # needs to be numeric
+# Convert the data frame to an sf object
+sample_points_sf <- st_as_sf(sample_points_df, coords = c("x", "y"), crs = crs(wren_abundance_mask))
+
+# Convert sf object to SpatialPointsDataFrame
+sample_points_sp <- as(sample_points_sf, "Spatial")
+
+# Create a gstat object
+gstat_model <- gstat(formula = abundance ~ 1, data = sample_points_sp)
+
+# Compute the variogram
+vario <- variogram(abundance ~ 1, data = sample_points_sp)
+
+# Plot the variogram
+plot(vario, main = "Variogram of Carolina Wren Abundance")
+print(vario)
+```
+
+* Is the abundance pattern isotropic or anisotropic (use variograms to support your answer)?  
+
+THis abundance pattern seems isotropic to me. There is a steady increase in semivariacne with distance, but that last datum makes me question all of it.
+
+* If you were to design a study to measure abundance of the Carolina wren across its geographic range, is there a distance at which you should space the sample sites to minimize spatial autocorrelation in the observations (again, refer to your variogram(s) to support your answer)?
+
+Yes, the maximum semivariance is at about 1150000m
+
+*** 
