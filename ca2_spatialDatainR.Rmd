@@ -44,6 +44,10 @@ library(sf)
 bioclim_data <- geodata::worldclim_global(var = "bio", res = 5, path = "C:/Users/Ray.Mroch.NMFS/Documents/Research/Coursework/MEES 698C Spatial Ecology/HW1")
 
 # stack layers bio10, bio11, bio18, and bio19
+
+#####Easier way to do this would be:
+#bioclim_stack <- bioclim_data[[c(10, 11, 18, 19)]]
+
 bioclim_stack <- c(bioclim_data[[10]], bioclim_data[[11]], bioclim_data[[18]], bioclim_data[[19]])
 names(bioclim_stack) <- c("bio10", "bio11", "bio18", "bio19")
 
@@ -98,6 +102,11 @@ xanth_sf <- st_intersection(xanth_sf, australia_sf)
 
 #plot to look for weirdos
 plot(xanth_sf)
+
+#####You can use
+#plot(st_geometry(xanth_sf))
+#####to plot only the geometry of the sf object
+
 #NSW seems to be bad at this or something, let's remove
 xanth_sf_clean <- xanth_sf[xanth_sf$institutionCode != "NSW Dept of Planning, Industry and Environment", ]
 #check to be sure ...
@@ -135,6 +144,8 @@ bio10_df <- as.data.frame(bio10_masked, xy = TRUE)
 #name bio10 "bio10"
 colnames(bio10_df)[3] <- "bio10"  # Rename the column for bio10 values
 
+
+#####It seems the data are in WGS84, not the original #####projection of the shapefile.
 
 #attempt to plot
 ggplot() +
