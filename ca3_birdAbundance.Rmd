@@ -46,6 +46,10 @@ wren_abundance_mask <- mask(wren_abundance, !is.na(wren_abundance))
 # Use the masked raster to sample points only where there is positive abundance
 sample_points <- spatSample(wren_abundance_mask, size = 400, method = 'random', na.rm = TRUE, values = FALSE, xy = TRUE) #<- this goes against my inclinations and instincts as a statistician to use a systematic search such as this, but this is how I interpreted "regular"
 
+#####NOTE: Turns out it doesn't matter that much, thus the reason for the
+# question below. Some sampling schemes are fairly regularly spaced. US Forest
+# Service uses a 1/4 mile grid for their forest inventory, for example.
+
 # Convert sample points to a data frame
 sample_points_df <- as.data.frame(sample_points)
 colnames(sample_points_df) <- c("x", "y")
@@ -130,12 +134,20 @@ Answer these questions:
 
 The correlogram decreases pretty steadily until about 2500000, then increases after. The changing of the increment moves the lowest negative correlation around between 2,500,000-3,000,000 and seems to decrease the negative correlation minimum a bit with increasing incremental size.
 
+##### NOTE: Check the solution here - very small increments produces a very noisey correlogram.
+
 * What is your interpretation of the resulting plot? In other words, what does it tell you about the spatial pattern in abundance of the Carolina wren?  
 
 It tells me that the wrens are a bit autocorrelated. We are likely to find wrens adjacent to other wrens and an absence of wrens near other wren-depleted areas. After a certain distance, there is a decline to a negative correlation. I would imagine that there is a social component to this, but I am not up on bird law. I would conclude that wren habitat is rather patchy or that there are big attractions to the wrens that causes them to conglomerate.
 
+##### NOTE: Check the solution here as well - and also the paper by Brown et al. 
+# (1995) for more information on this topic.
+
 * Does the correlogram look different if you sample random locations instead of using a regularly spaced grid of samples?   
 Yes, most of the observations are positively correlated. This is likely because the sampling locations were taken at a less-regular method, allowing for more noise. This would increase the random aspect of the model, decreasing the bias from regularity.
+
+##### NOTE: It actually doesn't matter all that much, as long as roughly the same
+# number of samples are taken. The correlogram is pretty similar.
 
 Keep in mind that we have VERY good data for these analyses, including a detailed raster map of abundance in nearly every location throughout the geographic range. Data this good are unusual (but becoming more common!) - so when answering these questions, try to think about what you could learn *from just the correlogram, assuming you had abundance data at a few dozen locations only instead of a detailed map*. This paper will be helpful to guide your interpretation (provided as a pdf with this assignment):  
 
@@ -167,8 +179,14 @@ print(vario)
 
 THis abundance pattern seems isotropic to me. There is a steady increase in semivariacne with distance, but that last datum makes me question all of it.
 
+##### NOTE: Need to build directional variograms to answer this question. See solution.
+
 * If you were to design a study to measure abundance of the Carolina wren across its geographic range, is there a distance at which you should space the sample sites to minimize spatial autocorrelation in the observations (again, refer to your variogram(s) to support your answer)?
 
 Yes, the maximum semivariance is at about 1150000m
+
+##### NOTE: The semivariance appears to increase linearly with much evidence of leveling off.
+# This means there is no distance at which you can minimize spatial autocorrelation - at
+# least not at the distances from teh samples we generated. 
 
 *** 
