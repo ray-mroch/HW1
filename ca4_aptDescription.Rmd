@@ -1,0 +1,295 @@
+---
+title: "HW 4 - Point Pattern Analysis"
+date: "Due Tuesday, Sept. 24th, 2024 via GitHub"
+output: pdf_document
+geometry: top=1in, bottom=1in, left=1in, right=1in
+---
+
+***  
+```{r Libraries}
+library(terra)   
+library(ggplot2) 
+library(viridis)
+library(raster)
+library(ncf)
+library(sp)
+library(gstat)
+library(sf)
+library(spatstat)
+library(readr)
+library(dplyr)
+```
+
+Assignment: This assignment involves analyses of both simulated and real point-pattern datasets. As in
+previous coding assignments, you will be graded on your answers and your ability to produce clean, well
+commented R code that performs the tasks listed below. If you used AI code generating tools, please indicate
+this in your submission.
+Write R scripts to complete the following tasks and answer each question.
+1. Simulate three types of point-patterns: (i) Complete Spatial Randomness (CSR), (ii) clustered, and (iii)
+segregated. Convert each to a ppp object and plot your simulated point-patterns (be sure to add an
+appropriate title so I know which is which).
+For the point-pattern with CSR: what is the value of lambda and what is the definition of this parameter?
+```{r Question 1}
+# Make a window
+win <- owin(c(0, 1), c(0, 1)) # A unit square
+
+# CSR
+lambda_csr <- 100 #intensity 
+ppp_csr <- rpoispp(lambda_csr, win=win)
+
+# Clustered Pattern
+lambda_cluster <- 5  #still intensity
+r_cluster <- 0.05     #size or radius of cluster
+k_cluster <- 10        # points/cluster
+ppp_cluster <- rMatClust(lambda_cluster, r_cluster, k_cluster, win=win)
+
+# (iii) Segregated Pattern 
+r_inhibit <- 0.05 
+ppp_segregated <- rSSI(r_inhibit, n=50, win=win)
+
+#Plot stuff
+par(mfrow=c(1, 3))  # 1 row, three plots
+
+# CSR plotn
+plot(ppp_csr, main="(CSR)")
+
+# Clustered pattern
+plot(ppp_cluster, main="Clustered Pattern")
+
+# Segregated pattern
+plot(ppp_segregated, main="Segregated (Inhibitory) Pattern")
+
+
+mtext("Lambda is 100, and it represents the number, on average,", 
+      side = 1, line = -3, adj = 1, col = "magenta", font = 2, cex = 1.5)
+mtext("of observations within the defined square", 
+      side = 1, line = -1, adj = 1, col = "magenta", font = 2, cex = 1.5)
+
+```
+
+2. Analyze each point pattern using G-, K- and F-tests and assess the significance of each test using null
+models and a Monte Carlo approach. Provide a brief interpretation of each of your simulated patterns
+as informed by the G-, K- and F-tests.
+```{r Question 2, pat 1: CSR}
+# CSR: Complete Spatial Randomness First
+
+
+# Test, G- F-, and K- stuff
+g_csr <- Gest(ppp_csr) #<-Nearest Neighbor
+f_csr <- Fest(ppp_csr) #<- for first-order distribution (non-random distribution)
+k_csr <- Kest(ppp_csr) #<- for second-order distribution(clustering)
+
+#Monte Carlo estimations
+# This tests if the observed pattern is significantly different from random
+g_csr_sim <- envelope(ppp_csr, Gest, nsim=99) #Monte-carlo estimations for CIs
+f_csr_sim <- envelope(ppp_csr, Fest, nsim=99) #Monte-carlo estimations for CIs
+k_csr_sim <- envelope(ppp_csr, Kest, nsim=99) #Monte-carlo estimations for CIs
+
+#Plots side-by-side
+par(mfrow = c(1, 3))
+
+# CSR Plots
+plot(g_csr_sim, main = "G-function M-C (CSR)")
+plot(f_csr_sim, main = "F-function M-C (CSR)")
+plot(k_csr_sim, main = "K-function M-C (CSR)")
+
+mtext("CSR, as expected, is more or less randomly distributed,", side = 1, line = -3, outer = TRUE, cex = 1.2)
+mtext("within CI of the expected lines and balanced, no first or second-order patterns", side = 1, line = -2, outer = TRUE, cex = 1.2)
+
+```
+
+
+```{r Question 2, part 2: Clustered}
+# Clustered Pattern
+g_cluster <- Gest(ppp_cluster)
+f_cluster <- Fest(ppp_cluster)
+k_cluster <- Kest(ppp_cluster)
+
+# Monte Carlo Simulations
+g_cluster_sim <- envelope(ppp_cluster, Gest, nsim=99)
+f_cluster_sim <- envelope(ppp_cluster, Fest, nsim=99)
+k_cluster_sim <- envelope(ppp_cluster, Kest, nsim=99)
+
+
+#set up for side-by-sides
+par(mfrow = c(1, 3))
+# Clustered pattern Plots
+plot(g_cluster_sim, main = "G-function (Clustered)") #<- nearest neighbor
+plot(f_cluster_sim, main = "F-function (Clustered)") #<- first-order test (density of points across space)
+plot(k_cluster_sim, main = "K-function (Clustered)") #<- second-order test (interactions among points, clustering)
+
+mtext("G^ functions all have significantly higher cum. dist. of nearest-neighbors than random", side = 1, line = -3, outer = TRUE, cex = 1.2)
+mtext("F-function shows significantly fewer points close to random points than random)", side = 1, line = -2, outer = TRUE, cex = 1.2)
+mtext("K-function shows significantly more points closer to other points than random (clustered))", side = 1, line = -1, outer = TRUE, cex = 1.2)
+```
+```{r Question 2, part 3: segregated}
+# Segregated Pattern
+g_segregated <- Gest(ppp_segregated)
+f_segregated <- Fest(ppp_segregated)
+k_segregated <- Kest(ppp_segregated) #<-
+
+# Monte Carlo Simulations
+g_segregated_sim <- envelope(ppp_segregated, Gest, nsim=99)
+f_segregated_sim <- envelope(ppp_segregated, Fest, nsim=99)
+k_segregated_sim <- envelope(ppp_segregated, Kest, nsim=99)
+
+#set up for side-by-sides
+par(mfrow = c(1, 3))
+
+# Segregated pattern Plots
+plot(g_segregated_sim, main = "G-function (Segregated)")
+plot(f_segregated_sim, main = "F-function (Segregated)")
+plot(k_segregated_sim, main = "K-function (Segregated)")
+
+mtext("G^ functions generally have a significantly lower nearest-neighbors than random", side = 1, line = -3, outer = TRUE, cex = 1.2)
+mtext("F-function observations generally close to randomly expected)", side = 1, line = -2, outer = TRUE, cex = 1.2)
+mtext("K-function shows a pattern not different from random (not clustered))", side = 1, line = -1, outer = TRUE, cex = 1.2)
+```
+
+3. Analyze the forest tree point pattern dataset from Harvard Forest
+X• Load hf253-04-stems-2014.csv
+X• Subset the data to (i) spatial extents of gx between c(600, 700) and gy between c(400, 500) and (ii)
+retain only the four most abundant species in the original dataset.
+x• Create a marked multivariate point pattern from the subsetted data, assigning the species code
+as a qualitative mark. Note that you will need to convert the species code to a factor as follows:
+factor(myData$speciesColumn, levels="vector of species").
+• Use tools at your disposal, including plotting and statistical tests, to propose an interpretation of the
+possible role of biotic processes, including intra- and interspecific interactions between the four tree
+species, in generating the spatial pattern. For this latter task rely on the G-Function for statistical
+analysis - as well as any others you found useful.
+Hints
+
+```{r Question 3: application to Harvard Forest, visual stuff first}
+
+# Harvard forest CSV upload
+hf_data <- read_csv("hf253-04-stems-2014.csv")
+
+##Subset the data to (i) spatial extents of gx between c(600, 700) and gy between c(400, 500) and (ii) retain only the four most abundant species in the original dataset.
+
+# Count the observances of each species
+species_count <- hf_data %>%
+  count(sp) %>%
+  arrange(desc(n))  # Sort by abundance
+#display top 4
+head(species_count, n = 4) #<- top 4 1. tsugca, 2. acerru 3. betual, 4. kalmla
+
+#subset to include top 4 species and associated g stuff
+hf_subset <- hf_data %>%
+  filter(gx >= 600 & gx <= 700, gy >= 400 & gy <= 500) %>%
+  filter(sp %in% c("tsugca", "acerru", "betual", "kalmla"))
+
+# Ensure species codes are factors with the correct levels
+hf_subset$sp <- factor(hf_subset$sp, levels = c("tsugca", "acerru", "betual", "kalmla"))
+
+# Define the observation window (based on gx and gy ranges)
+win <- owin(xrange = c(600, 700), yrange = c(400, 500))
+
+# Create the marked point pattern (ppp object)
+ppp_hf_subset <- ppp(
+  x = hf_subset$gx, 
+  y = hf_subset$gy, 
+  marks = hf_subset$sp,  # Species as the mark
+  window = win
+)
+
+#make a multivariate ppp, with species marked
+ppp_hf_subset <- ppp(hf_subset$gx, hf_subset$gy, window = win, marks = hf_subset$sp)
+
+plot(ppp_hf_subset)
+mtext("This is really busy, I'll try different visualizations", side = 1, line = -3, outer = TRUE, cex = 1.2)
+```
+
+```{r Question 3: visualizations}
+# Create density raster for trees
+density_image <- density(ppp_hf_subset)
+plot(density_image, main = "All top 4 species combined")
+mtext("There does seem to be a pattern, ", side = 1, line = -3, outer = TRUE, cex = 1.2)
+mtext("looking at the distribution the N corners are low", side = 1, line = -2, outer = TRUE, cex = 1.2)
+
+# Set up a plotting area with 1 row and 4 columns
+par(mfrow = c(1, 4))
+# each species
+species_list <- levels(ppp_hf_subset$marks)
+
+# mt list
+density_list <- list()
+
+# Loop through each species for density
+for (species in species_list) {
+  # point patterns by species
+  ppp_subset <- ppp_hf_subset[ppp_hf_subset$marks == species]
+  
+  # density for subset
+  density_image <- density(ppp_subset)
+  
+  # convert to data frame
+  density_df <- as.data.frame(density_image)
+  density_df$species <- species
+  
+  # store
+  density_list[[species]] <- density_df
+}
+
+# Combine for plotting
+combined_density <- bind_rows(density_list)
+
+# Plotting densities by density
+for (sp in species_list) {
+  # by species
+  species_data <- combined_density %>% filter(species == sp)
+  
+  # plot
+  p <- ggplot(species_data) +
+    geom_raster(aes(x = x, y = y, fill = value)) + #value auto-uses species
+    scale_fill_viridis(name = "Density") +  
+    coord_fixed() +  # Maintain aspect ratio
+    labs(title = "Density of Species Occurrences",
+       x = "X Coordinate (gx)",
+       y = "Y Coordinate (gy)") +
+  facet_wrap(~ species, ncol = 4) +  # 4 plots in a row
+    theme_minimal() +
+    theme(legend.position = "right")
+  
+  # Print out
+  print(p)
+  }
+
+```
+There are several patterns to observe here. Looking at the combined plot, there are higher densities of trees in the southern half, with a gradual lessening from the peak density in centered on the sw corner.
+The Tsuga species mirrors the pattern of the overall trees, being most abundant in a band running from the western border, to the southern border of the plot. This could, perhaps, mean that this is the most abundant of the trees in count, maybe it's shrubby, small, and abundant while the others are more mature, and large.
+The Acer species is most abundant in the southwest corner, and somewhat on the other side of the band of hemlocks.
+The Belulua species is msot abundant in the most soutwestern portion and a bit on the central-southern portion of the plot.
+Finally, the Kalmia species is most abundant in the southeastern portion of the plot.
+
+```{r question 3 conitnued: statistical tests}
+par(mfrow = c(1, 3))  # side-by-sides
+
+# getting loopy
+for (species in species_list) {
+  # Subset the ppp object by species
+  ppp_species <- ppp_hf_subset[marks(ppp_hf_subset) == species]
+  
+  # G-, F-, and K-function for the species
+  g_species <- Gest(ppp_species)
+  f_species <- Fest(ppp_species)
+  k_species <- Kest(ppp_species)
+  
+  # Monte Carlo simulations for the species
+  g_species_sim <- envelope(ppp_species, Gest, nsim = 99)
+  f_species_sim <- envelope(ppp_species, Fest, nsim = 99)
+  k_species_sim <- envelope(ppp_species, Kest, nsim = 99)
+  
+  # Plotting results for the species
+  plot(g_species_sim, main = paste("G-function (", species, ")", sep = ""))
+  plot(f_species_sim, main = paste("F-function (", species, ")", sep = ""))
+  plot(k_species_sim, main = paste("K-function (", species, ")", sep = ""))
+}
+```
+The G-function for each species is significantly higher than the expeced lines, indicating that we would reject the null hypothesis of complete spatial randomness (CSR) for all species. This would make sense unless there were some plot somewhere that had all things being equal along every point.
+
+The F-function for each species is significantly lower than the expected line, this indicates that there are fewer points close to random points than would be expected if the distribution was random. This could be an indicater of a first-order distribution: the trees are not randomly spread about the plot. This makes sense because there will likely be different microhabitats as well as the constant competition for light, water, and other resources, as well as incorporating the difference in each that would be due to the varying terrain. The F-function could indicate some increased dispersion, this could come from either intra- or inter-species repulsion via competition.
+
+The K-function for each species is significantly higher than the expected line, indicating the distribution is more clustered than random. This makes sense, since all of these are trees and this could limit seed dispersal. Also there may be more intra-specific interactions, perhaps through pupping or some mutual benefit to being in a copse of trees (sorry, I am a marine biologist, I may be barking up the wrong tree with these terms, but I decided to leaf them in there).
+
+Overall, in all species we see that their dispersion deviates from what would be expected from a CSR distribution. The null hypothesis of random distance is rejected. Further tests show that there is some significant evidence of an outcome resembling repulsion within species, where there will be some distance between their conspecifics. Finally, the clustering evident from the K-function indicates that there is also likely some interspecific competition at play, since each species is more likely to be clustered within its own species, rather than interspersed with others despite the intraspecific repulsion that is evident.
+

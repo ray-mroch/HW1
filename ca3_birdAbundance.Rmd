@@ -158,14 +158,20 @@ gstat_model <- gstat(formula = abundance ~ 1, data = sample_points_sp)
 # Compute the variogram
 vario <- variogram(abundance ~ 1, data = sample_points_sp)
 
-# Plot the variogram
-plot(vario, main = "Variogram of Carolina Wren Abundance")
-print(vario)
+print(show.vgms()) #spherical model seems best, but doesn't converge. Gaussian second
+
+model.gau <- fit.variogram(vario, model=vgm("Gau"))
+
+# see the results
+model.gau#
+
+# plot the variogram with the spherical model
+plot(vario, model=model.gau) 
 ```
 
 * Is the abundance pattern isotropic or anisotropic (use variograms to support your answer)?  
 
-THis abundance pattern seems isotropic to me. There is a steady increase in semivariacne with distance, but that last datum makes me question all of it.
+This abundance pattern seems isotropic to me. There is a steady increase in semivariacne with distance, but that last datum makes me question that if we increased the scale whether it would then be anisotropic.
 
 * If you were to design a study to measure abundance of the Carolina wren across its geographic range, is there a distance at which you should space the sample sites to minimize spatial autocorrelation in the observations (again, refer to your variogram(s) to support your answer)?
 
