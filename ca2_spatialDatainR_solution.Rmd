@@ -1,0 +1,284 @@
+---
+title: "Solution to Coding Assignment 2 ~ Working with Spatial Data in R"
+output: html_document
+geometry: top=1in, bottom=1in, left=1in, right=1in
+---
+
+***  
+
+***Assignment:*** This coding assignment is designed to build your skills at working with, manipulating, and plotting spatial data in R. You are provided with a shapefile and must download a set of climate rasters and species occurrence data. You will then perform various tasks using these three datasets. You will be graded on your ability to produce clean, well commented R code that performs the tasks listed below. When you are done, submit your assignment by pushing your final scripts, etc to your GitHub repository.
+  
+Keep in mind this is an assignment, not an exam, and the goal is for you to learn. Please do not hesitate to ask if you have questions or need help. Feel free to work with other students using the course `Slack` channel or other means. Use of `CoPilot` and other AI code generating tools is allowed, but make sure to comment your code such that someone else can follow it and please *also indicate where AI was used*. If you used AI, you should also make sure that you fully understand the code you are submitting. 
+
+```{r, echo=FALSE, out.width="33%", fig.cap="A small grass tree in Western Australia and a range map of Xanthorrhoea australis from the Australasian Virtual Herbarium. Photo credit: MC Fitzpatrick", fig.show='hold', fig.align='center'}
+knitr::include_graphics(c("/Users/mfitzpatrick/code/spatialEcology2024/codingAssignments/ca-2/IMG_3291.jpeg","/Users/mfitzpatrick/code/spatialEcology2024/codingAssignments/ca-2/avhMap.png"))
+```
+
+1. Use the `geodata::worldclim_global` function to download the [Worldclim](https://www.worldclim.org/) (https://www.worldclim.org/) global climate data set at 5 arc-minute resolution. For this assignment, we will be working with bioclimatic variables (see `?worldclim_global` in the `geodata` package for details as well as the Worldclim website for definitions). *Note that these data are somewhat large, so downloading them while on a decent internet connection is a good idea. Also, be careful if you download these into your github repository! If so, you probably don't want to track these large files, do you?* 
+
+```{r, echo=TRUE, message=FALSE}
+# load the necessary libraries for this assignment
+library(geodata)
+library(terra)
+library(sf)
+library(dplyr)
+library(ggplot2)
+library(colorRamps)
+library(viridisLite)
+setwd("C:/Users/Ray.Mroch.NMFS/Documents/Research/Coursework/MEES 698C Spatial Ecology/HW1/HW1")
+```
+
+```{r, echo=TRUE, message=FALSE, fig.align='center', fig.width=6}
+# download the bioclim variables
+bioRasts <- worldclim_global(var="bio", res=5, path=getwd())
+
+#plot bio_1 to have a look at the data
+plot(bioRasts[[1]])
+
+# check the CRS of the rasters
+terra::crs(bioRasts, describe=T)
+
+# rename the layers for convenience
+names(bioRasts) <- paste0("bio", 1:19)
+```
+
+2. Make a raster stack containing these four bioclimatic variables: `bio10`, `bio11`, `bio18`, and `bio19`. Next, crop the raster stack to the *outline of Australia*, **not the extent**, using the shapefile provided with this assignment. Note that the shapefile also contains New Zealand, which is not part of Australia, so you will have to do something about that before you perform the cropping operation, among other steps.
+
+Take note of my object naming convention. We are working with several datasets using multiple CRSs, so I use a consistent naming convention to keep track of the data. Some of the object names become long, but autocomplete helps and knowing which object has which properties from the name alone can save a lot of time and mistakes.
+
+```{r, echo=TRUE, message=FALSE, fig.align='center', fig.width=6}
+# retain only the bioclim variables of interest
+bioRasts <- subset(bioRasts, c("bio10", "bio11", "bio18", "bio19"))
+
+# load the Australia shapefile
+ausNZ <- st_read("/Users/mfitzpatrick/code/spatialEcology2024/codingAssignments/ca-2/oz_nz_aea.shp")
+
+# check CRS of the shapefile, differs from bioRasts!
+crs(ausNZ, describe=T)
+
+# remove New Zealand
+aus.albers <- subset(ausNZ, NAME == "Australia")
+
+# transform aus to CRS as the bioclim rasters
+aus.wgs84 <- st_transform(aus.albers, crs = st_crs(bioRasts))
+
+# crop the raster stack to the outline of Australia
+bioRasts.aus <- crop(bioRasts, aus.wgs84, mask = TRUE)
+
+# plot the cropped raster stack
+plot(bioRasts.aus)
+```
+
+3. Use the `geodata::sp_occurrence` function to download records for the Austral grass tree (*Xanthorrhoea australis*). Clean up the resulting data frame by removing records without geographic coordinates, those that fall outside the Australian mainland, and any other suspicious records that suggest errors. Convert the data to an `sf` object with the correct CRS and containing only these attributes: `acceptedScientificName`, `institutionCode`, and `year`. Save your `sf` object as a shapefile.  
+
+```{r, echo=TRUE, message=FALSE, fig.align='center', fig.width=6}
+# download the species occurrence data
+grassTree <- sp_occurrence(genus = "Xanthorrhoea",
+                         species = "australis",
+                         download=T,
+                         geo=T,
+                         removeZeros = T)
+
+# check for records without geographic coordinates
+# but, should be none because geo=T argument
+summary(grassTree$lon)
+summary(grassTree$lat)
+
+# subset columns of interest
+grassTree.sf <- grassTree %>%
+  select(acceptedScientificName, institutionCode, lon, lat, year)
+
+# convert to sf object
+grassTree.sf <- sf::st_as_sf(grassTree.sf, coords = c("lon", "lat"))
+
+# assign CRS information
+st_crs(grassTree.sf) <- 4326
+
+# plot the data
+world <- rnaturalearth::ne_countries(scale = "medium", returnclass = "sf")
+ggplot() +
+  geom_sf(data = world) +
+  geom_sf(data = grassTree.sf, aes(color = acceptedScientificName)) +
+  theme_minimal()
+
+# save the sf object as a shapefile
+#st_write(grassTree.sf, "grassTree_gbif.shp")
+```
+
+There appear to be some suspicious records in the data, including a few in Europe and North America and perhaps one in the ocean off the coast of Australia. There also appears to be a suspicious record in the center of the Australian continent. Let's clean some of these up and go from there. 
+
+```{r, echo=TRUE, message=FALSE, fig.align='center', fig.width=6}
+# select points that fall within the Australia polygon
+grassTree.sf <- sf::st_intersection(grassTree.sf, aus.wgs84)
+
+# plot the new data
+ggplot() +
+  geom_sf(data = aus.wgs84) +
+  geom_sf(data = grassTree.sf, aes(color = acceptedScientificName)) +
+  theme_minimal()
+```
+
+This looks good, except for that pesky record hanging out in the middle of Australia, well outside the native range suggested from the map at the top of the assignment. This one is harder to remove, but we have a few options. We could find the centroid of the Australia polygon and remove the point closest to that location. We could perhaps check the coordiante uncertainty of different records, but no guarantee that would isolate the record we are conerned about. We also could also use the `CoordinateCleaner` package to remove points that fall at the centroid of countries. But since we are dealing with a single point, we could just subset the data by hand, keeping only those points away from the center of the continent. That's pretty easy here because the suspicious record has the lowest longitude (farthest west) of any of the records. We can find the index of this record and remove it.
+
+```{r, echo=TRUE, message=FALSE, fig.align='center', fig.width=6}
+# find the westernmost record
+west <- which.min(data.frame(st_coordinates(grassTree.sf))$X)
+
+# remove the westernmost record
+grassTree.sf <- grassTree.sf[-west,]
+
+# plot the new data
+ggplot() +
+  geom_sf(data = aus.wgs84) +
+  geom_sf(data = grassTree.sf, aes(color = acceptedScientificName)) +
+  theme_minimal()
+```
+
+Now we can proceed...
+
+4. Make a simple map of the cleaned species occurrence records from GBIF, using a color ramp or symbolization scheme to indicate *the year the record was collected*. Make sure to include the polygon of Australia and plot the `bio10` raster as the background. **NOTE:** *All data in this map should be in the original projection of the Australia & New Zealand shapefile (i.e., not WGS84)*. Save the transformed `bio10` raster as a GeoTiff. 
+
+Note that I found it makes a cleaner map if you remove spatial duplicates from the species occurrence data first, but this is not required.
+
+```{r, echo=TRUE, message=FALSE, fig.align='center', fig.width=6}
+# transform bio10 raster to CRS of Australia shapefile
+bioRasts.aus.albers <- project(bioRasts.aus, crs(aus.albers))
+bio10.aus.albers <- bioRasts.aus.albers[["bio10"]]
+
+# save the transformed bio10 raster as a GeoTiff
+#writeRaster(bio10.albers, "bio10_aus.tif", overwrite=TRUE)
+
+# before plotting, remove spatial duplicates then
+# transform the points to the same CRS as the raster
+grassTree.sf.albers <- st_transform(grassTree.sf, crs = crs(aus.albers))
+
+# remove spatial duplicates
+# get the cell number of each record, useful for Task #6 as well
+grassCells <- cellFromXY(bio10.aus.albers, st_coordinates(grassTree.sf.albers))
+
+# find duplicate cell numbers
+dups <- duplicated(grassCells)
+
+# keep only one record per climate grid cell
+grassTree.sf.albers.noDups <- grassTree.sf.albers[!dups,]
+```
+
+All the data should be ready for plotting. I found it easier to use the base plotting functions rather than ggplot for this task. I plot the `bio10` raster as the background, then add the polygon of Australia, and finally plot the cleaned species occurrence data. I use the `colorRamps` package to get a color ramp for the raster and the `colorRamps::ygobb()` function to get a color ramp for the year. 
+
+```{r, echo=TRUE, message=FALSE, fig.align='center', fig.width=6}
+#plot raster, alpha sets transparency
+plot(bio10.aus.albers, col=colorRamps::rgb.tables(1000), alpha=0.75) 
+# add the polygon
+plot(st_geometry(aus.albers), add=T)
+
+# setup color ramp for year using colorRamps::ygobb()
+cols <- colorRamps::ygobb(nrow(grassTree.sf.albers.noDups))
+
+# plot the records
+plot(grassTree.sf.albers.noDups[,"year"], col=cols, pch=19, add=T, cex=0.5)
+```
+
+5. Use the cleaned species occurrence data to extract the values of the four bioclimatic variables from the raster stack and make some plots to compare the climate conditions where this species has been observed to the broader climate of Australia. A few hints: Have a look at the `terra::spatSample` function. To perform the comparison between climates where the species is present and Australia more broadly, you have a number of options. You might try scatter plots, box plots, or histograms, but you do not need to do any statistical analyses (in other words, see what you can learn from simple plots alone - that's enough for this assignment). 
+
+This task requires a few steps. First, I use `extract` to extract the values of the `bioRasts` at the grass tree locations (note I use the data without duplicates here). Some points fall outside of the rasters, so I also remove those. 
+
+```{r, echo=TRUE, message=FALSE}
+# extract bioclimatic vars at the grass tree locations
+grassClim <- extract(bioRasts.aus.albers, grassTree.sf.albers.noDups)
+
+# check for NA values
+summary(grassClim)
+
+# remove NA values
+grassClim <- grassClim[complete.cases(grassClim),]
+```
+
+Next, I use `spatSample` to get the values of the `bioRasts` at 10,000 locations randomly sampled across Australia. 
+
+```{r, echo=TRUE, message=FALSE}
+# sample 10,000 points across Australia
+# note use of na.rm=TRUE
+set.seed(123)
+randClim <- spatSample(bioRasts.aus.albers, 10000, method = "random", na.rm = TRUE)
+```
+
+Lastly, I plot and compare the two datasets: (1) the climate conditions where the species has been observed (`grassClim`) and (2) the climate at a random selection of 10,000 locations (`randClim`). I decided to use a density plot (in essence like a smoothed histogram) to make the comparison. I setup a 2 x 2 plot window and then plot each variable, using different colors for the species data and the random data. I also add legends. These plots make it clear that the grass tree occurs in cooler and wetter environments than the broader climate of Australia.  
+
+```{r, fig.align='center', fig.cap="The climatic niche of the grass tree.", fig.width=6, echo=TRUE, message=FALSE}
+par(mfrow=c(2,2))
+# bio10
+plot(density(randClim$bio10), col="black", ylim=c(0,0.35),
+     main="bio10: Summer Temperature",
+     xlab=expression(paste("Summer Temperature (", degree, "C)")))
+lines(density(grassClim$bio10), col="red")
+
+# bio11
+plot(density(randClim$bio11), col="black", ylim=c(0,0.35),
+     main="bio11: Winter Temperature",
+     xlab=expression(paste("Winter Temperature (", degree, "C)")))
+lines(density(grassClim$bio11), col="red")
+# add legend
+legend(x=13, y=0.2, legend=c("Grass tree", "Random"),
+       col=c("red", "black"), lwd=2, cex=0.8, bty="n")
+
+# bio18
+plot(density(randClim$bio18), col="black", ylim=c(0,0.01),
+     main="bio18: Summer Precipitation",
+     xlab="Summer Precipitation (mm)")
+lines(density(grassClim$bio18), col="blue")
+
+# bio19
+plot(density(randClim$bio19), col="black", ylim=c(0,0.015),
+     main="bio19: Winter Precipitation",
+     xlab="Winter Precipitation (mm)")
+lines(density(grassClim$bio19), col="blue")
+legend(x=450, y=0.01, legend=c("Grass tree", "Random"),
+       col=c("blue", "black"), lwd=2, cex=0.8, bty="n")
+```
+
+**Answer the questions: **  
+1. How does the climate where *X. australis* has been observed differ from that of Australian climates more generally? 
+
+*X. australis* occurs in cooler and wetter (especailly in terms of winter) environments than the broader climate of Australia.
+
+2. What does this tell us about the species' habitat preferences?
+
+The species' habitat preferences tend to reflect cooler and wetter climates than the broader climate of Australia, which are found in the Great Dividing Range and the southeastern corner of the continent.
+
+6. Now for a challenge: Create a raster of the number of *X. australis* GBIF records in each 5' grid cell. You might try using the `terra::rasterize` function or perhaps by extracting the cell ID for each observation and counting the number of times each cell number is duplicated (indicating the number of observations in that cell, right?). This can be a tough one, so don't hesitate to check in if you get stuck.
+
+We have the cell numbers from above, so we can use the `table` function to count the number of records in each cell. We can use one of the bioclim rasters to produce a `mask` for the output raster. We can then assign the record counts to this mask, as follows:
+
+```{r, echo=TRUE, message=FALSE, fig.align='center', fig.width=6}
+# create a mask from bio10
+mask <- bio10.aus.albers
+
+# trick to assign zeroes to the mask
+# so we start with a raster full of zeroes, we just need to assign the counts
+mask <- mask*0
+
+# plot the mask
+plot(mask)
+
+# count the number of records in each cell
+cellCounts <- table(grassCells)
+
+# check the data
+# one grid cell has 569(!!!) records  
+summary(as.numeric(cellCounts))
+
+# convert names of cellCounts to 
+# these `names` are actually the cell IDs
+cellNums <- as.integer(names(cellCounts))
+
+# now we assign the counts to the mask
+# I log transform the counts to improve plotting
+mask[cellNums] <- as.numeric(log(cellCounts))
+
+# small extent to show pattern that is not visible at full extent
+plot(mask, col=viridis(1000),
+     xlim=c(36000,1900000),
+     ylim=c(-5000000, -2900000))
+```
+
+*** 
