@@ -20,8 +20,10 @@ library(patchwork)
 library(predicts)
 library(terra)   
 library(readr)
+library(rJava)
 library(sf) 
 library(sp)
+library(spatstat.data)
 library(spatstat)
 library(terra)
 library(usdm)
@@ -37,16 +39,16 @@ Luckily, you already ahve some practice completing theses tasks. You will first 
 Data ‘cleaning’ is always important and especially so for data downloaded from online biodiversity databases such as GBIF. Data cleaning typically involves removing duplicates, erroneous records (i.e., records with wrong geographic coordinates, outside of the native range of the species, low spatial precision, etc.). The goal is to produce a data set that is appropriate for (1) fitting SDMs (i.e., to avoid the old modeling adage: ‘garbage in, garbage out’) and (2) your particular research objective. One important step in the data cleaning process is plotting your data to make sure everything overlaps correctly in geographic space and generally makes sense given what (if anything) you know about the species. Again, refer to the solution to coding assignment #2 to make sure your code works correctly. You will be graded on your ability to produce clean, well commented R code that performs the tasks listed below without error. When you are done, push your code to GitHub and submit an issue so I know you have completed the assignment.
 
 
-```{r setup 1. Use the geodata package to download bioclimatic variables from the Worldclim (https://www.worldclim.org/) climate data set at 5 arc-minute resolution. Note that unfortunately, we can’t use the worldclim_country function to download data for only Australia, because, for some reason, that function only provides data at 1km x 1km resolution!}
+```{r Use the geodata package to download bioclimatic variables from the Worldclim (https://www.worldclim.org/) climate data set at 5 arc-minute resolution. Note that unfortunately, we can’t use the worldclim_country function to download data for only Australia, because, for some reason, that function only provides data at 1km x 1km resolution!}
 # Download bioclimatic variables at 5 arc-minute resolution (bummer about the worldclim_country bit, though)
-bioclim_data <- worldclim_global(var = "bio", res = 5, path = "C:/Users/Ray.Mroch.NMFS/Documents/Research/Coursework/MEES 698C Spatial Ecology/HW1/HW1")
+bioclim_data <- worldclim_global(var = "bio", res = 5, path = "C:/Users/Mrochs/Documents/GitHub/Mroch-Homework")
 
 #check it out
 plot(bioclim_data)
 
 # download the bioclim variables
 bioRasts <- worldclim_global(var="bio", res=5, path=getwd())
-
+names(bioRasts) <- paste0("bio", 1:19)
 #plot bio_1 to have a look at the data
 plot(bioRasts[[1]])
 
@@ -75,10 +77,10 @@ tail(bioclim_stack) #<-OK, there are some numbers in it.
 
 # Crop the resulting raster stack to the outline of Australia (not the extent) using the shapefile provided with coding assignment #2. Rename the cropped rasters so they have the correct names (e.g., bio2, bio3, etc.).
 # Stralya shapefile, mate! ... um, but it contains Kiwi crap, too
-ausNZ <- vect("C:/Users/Ray.Mroch.NMFS/Documents/Research/Coursework/MEES 698C Spatial Ecology/HW1/oz_nz_aea.shp")
+ausNZ <- vect("C:/Users/Mrochs/Documents/GitHub/Mroch-Homework/oz_nz_aea.shp")
 
 # check CRS of the shapefile, differs from bioRasts!
-crs(ausNZ, describe=T)
+crs(ausNZ, describe = T)
 
 # remove New Zealand
 aus.albers <- subset(ausNZ, ausNZ$NAME == "Australia")
@@ -107,8 +109,8 @@ As we have discussed in class, gridded spatial duplicates are observations that 
 # download the species occurrence data
 xanth <- sp_occurrence(genus = "Xanthorrhoea",
                          species = "australis",
-                         download=T,
-                         geo=T, #indicates that there shoudl be none without coordinates!
+                         download = T,
+                         geo = T, #indicates that there shoudl be none without coordinates!
                          removeZeros = T)
 
 # select points that fall within the Australia polygon
@@ -194,8 +196,6 @@ xanth_cleaned <- xanth_cleaned %>%
   filter(!duplicated(paste(rounded_longitude, rounded_latitude)))
 dim(xanth_cleaned) #593 now, seems good
 
-#trying again for bioclim thing
-xanth.clean.test <- crop(xanth.clean.sf, st_as_sfc(st_bbox(bioRasts.aus)))
 
 #plot to check
 #convert to sf
@@ -203,7 +203,7 @@ xanth.clean.test <- crop(xanth.clean.sf, st_as_sfc(st_bbox(bioRasts.aus)))
 coords <- st_coordinates(xanth_cleaned$geometry)
 
 # Plot the occurrence points on top of the raster
-plot(bioclim_australia[[3]], main = "Bioclimatic Variable with Xanthorrhoea australis Points")
+plot(bioRasts.aus[[3]], main = "Bioclimatic Variable with Xanthorrhoea australis Points")
 points(coords, col = 'blue', pch = 19, cex = 0.7)
 #OK, I think this looks alright
 ```
@@ -239,25 +239,28 @@ bvOcc <- as.data.frame(c(rep(1,nrow(bioclim.xanth.clean)), rep(0, nrow(envBg))))
 xyPres <- as.matrix(st_coordinates(bioclim.xanth.clean$geometry)) #593
 #colnames capitalized for some reason
 colnames(xyPres) <- c("x", "y")
-xyBg <- select(envBg, x, y) #10k
-
+xyBg <- cbind(envBg$x, envBg$y) #10k
+colnames(xyBg) <- c("x", "y")
+xybgcoord <- as.data.frame(coordinates(xyBg))
 #select environmental columns (bio1-19) based on the names (REMEMBER TO USE THE ONE THAT WE JUST Cbound)
-envPres.x <- as.data.frame(select(bioclim.xanth.clean, names(bioRasts.aus)))
-envBg.x <- as.data.frame(select(envBg, names(bioRasts.aus)))
+envPres.x <- bioclim.xanth.clean[, names(bioRasts.aus)]
+envBg.x <- st_as_sf(envBg, coords = c("x", "y"), crs = 4326)
 # not sure why I got so many columns so ...
 # Subset envPres.x by names in envBg.x
 common_vars <- intersect(names(envPres.x), names(envBg.x))
 envPres.x <- envPres.x[, common_vars]
-
+envBg.x <- envBg.x[, common_vars]
 #now make a data.frame
 sdmData <- data.frame(cbind(rbind(xyPres, xyBg), #coords
                             bvOcc,#presence
                             rbind(envPres.x, envBg.x))) #environmental data
 head(sdmData)
 summary(sdmData)
+colnames(sdmData) <- c("x", "y", "pres", "bio1" , "bio2" , "bio3" , "bio4" , "bio5" , "bio6" , "bio7" , "bio8" , "bio9" , "bio10" , "bio11" , "bio12" , "bio13" , "bio14" , "bio15" , "bio16" , "bio17", "bio18", "bio19", "geometry")
+sdmdata_noxy <- sdmData %>% select(-geometry)
 # Use the vifstep function in the usdm library to remove highly correlated variables from your data table. You will use the remaining variables to fit SDMs. I ended up with 6 uncorrelated bioclimatic variables.
 #variance inflation factor test (VIF)
-VIF <- vifstep(sdmData, th = 5) #this will show the VIF with less than 5
+VIF <- vifstep(sdmdata_noxy, th = 5) #this will show the VIF with less than 5
 #clean up the rasters for later
 bioRasts.aus.clean <- subset(bioRasts.aus, c("bio2", "bio3", "bio8", "bio9", "bio18", "bio19"))
 #show the results
@@ -305,14 +308,13 @@ x <- x^2
 p_value <- pchisq(x, df = k, lower.tail = FALSE)
 return(p_value)
 })
+mm.prob_df <- as.data.frame(mm.prob, xy = TRUE)
 #spatraster didn't work, converting to df
-ggplot(data = mm.prob_df, aes(x = x, y = y, fill = lyr.1)) +  # Replace 'layer' with the correct column name
+ggplot(data = mm.prob_df, aes(x = x, y = y, fill = lyr.1)) + 
   geom_raster() +
-  scale_fill_gradientn(colors = rgb.tables(1000), na.value = "transparent", name = "Prob") +
-  # Uncomment the following line if you want to overlay geographical boundaries
-  # geom_sf(data = bvCountries, fill = NA) +
+  scale_fill_gradientn(colors = brewer.pal(9, "YlOrRd"), na.value = "transparent", name = "Prob") +
   theme_minimal()
-
+#cool! They look like they could exist somewhere else, someone's not realizing their whole fundamental niche ...
 #######Look at evaluation stuff
   
 ```
@@ -322,7 +324,7 @@ ggplot(data = mm.prob_df, aes(x = x, y = y, fill = lyr.1)) +  # Replace 'layer' 
 # Example: Ensure raster stack and presence points are prepared
 bioRastsKeep <- stack(bioRasts.aus.clean)  # Uncorrelated set of bioclimatic rasters
 bioRastsKeep_brick <- brick(bioRastsKeep)
-filepath <- "C:/Users/Ray.Mroch.NMFS/Documents/Research/Coursework/MEES 698C Spatial Ecology/HW1/HW1/maxent"
+filepath <- "C:/Users/Mrochs/Documents/GitHub/Mroch-Homework/maxent"
 sdmdata.posloc <- as.data.frame(sdmData_clean[sdmData_clean$pres==1, c("x","y")])
 # Fit MaxEnt model
 maxent_model <- MaxEnt(bioRasts.aus.clean, 

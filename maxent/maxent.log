@@ -1,0 +1,39 @@
+Mon Oct 07 22:36:53 EDT 2024
+MaxEnt version 3.4.3
+Reading file absence
+readGrid: max memory 477626368, total allocated 257425408, free 238625760, used 18799648, increment 18799648
+Reading samples from presence
+Read samples: max memory 477626368, total allocated 257425408, free 223360776, used 34064632, increment 15264984
+Adding samples to background in feature space
+Command line used:  autorun -e C:/Users/Mrochs/Documents/GitHub/Mroch-Homework/maxent/absence -o C:/Users/Mrochs/Documents/GitHub/Mroch-Homework/maxent -s C:/Users/Mrochs/Documents/GitHub/Mroch-Homework/maxent/presence -z
+Command line to repeat: java density.MaxEnt nowarnings noprefixes outputdirectory=C:/Users/Mrochs/Documents/GitHub/Mroch-Homework/maxent samplesfile=C:/Users/Mrochs/Documents/GitHub/Mroch-Homework/maxent/presence environmentallayers=C:/Users/Mrochs/Documents/GitHub/Mroch-Homework/maxent/absence autorun novisible noprefixes
+Species: species
+Layers: bio18 bio19 bio2 bio3 bio8 bio9
+Layertypes: Continuous Continuous Continuous Continuous Continuous Continuous
+outputdirectory: C:/Users/Mrochs/Documents/GitHub/Mroch-Homework/maxent
+samplesfile: C:/Users/Mrochs/Documents/GitHub/Mroch-Homework/maxent/presence
+environmentallayers: C:/Users/Mrochs/Documents/GitHub/Mroch-Homework/maxent/absence
+autorun: true
+visible: false
+prefixes: false
+
+getSamples: max memory 477626368, total allocated 257425408, free 218703408, used 38722000, increment 4657368
+Making features
+makeFeatures: max memory 477626368, total allocated 257425408, free 216374360, used 41051048, increment 2329048
+species: 
+Regularization values: linear/quadratic/product: 0.050, categorical: 0.250, threshold: 1.000, hinge: 0.500
+447 samples
+Density: max memory 477626368, total allocated 257425408, free 198821728, used 58603680, increment 17552632
+linearPredictor: max memory 477626368, total allocated 257425408, free 198821728, used 58603680, increment 0
+Time since start: 1.031
+FeaturedSpace: max memory 477626368, total allocated 257425408, free 198821728, used 58603680, increment 0
+Sequential: max memory 477626368, total allocated 257425408, free 198821728, used 58603680, increment 0
+Initial loss: 9.251290358305138
+Time since start: 12.425
+500: time = 11.389000 loss = 7.035991
+Resulting gain: 2.2152989343502885
+Time since start: 24.959
+Projecting...
+Writing file C:\Users\Mrochs\Documents\GitHub\Mroch-Homework\maxent\species.csv
+Time since start: 26.678
+Ending
