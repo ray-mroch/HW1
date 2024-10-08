@@ -9,6 +9,7 @@ geometry: top=1in, bottom=1in, left=1in, right=1in
 ```{r Libraries}
 library(dplyr)
 library(dismo)
+library(ecospat)
 library(ENMeval)
 library(geodata)
 library(ggplot2)
@@ -20,8 +21,10 @@ library(patchwork)
 library(predicts)
 library(terra)   
 library(readr)
+library(rJava)
 library(sf) 
 library(sp)
+library(spatstat.data)
 library(spatstat)
 library(terra)
 library(usdm)
@@ -37,7 +40,7 @@ Luckily, you already ahve some practice completing theses tasks. You will first 
 Data ‘cleaning’ is always important and especially so for data downloaded from online biodiversity databases such as GBIF. Data cleaning typically involves removing duplicates, erroneous records (i.e., records with wrong geographic coordinates, outside of the native range of the species, low spatial precision, etc.). The goal is to produce a data set that is appropriate for (1) fitting SDMs (i.e., to avoid the old modeling adage: ‘garbage in, garbage out’) and (2) your particular research objective. One important step in the data cleaning process is plotting your data to make sure everything overlaps correctly in geographic space and generally makes sense given what (if anything) you know about the species. Again, refer to the solution to coding assignment #2 to make sure your code works correctly. You will be graded on your ability to produce clean, well commented R code that performs the tasks listed below without error. When you are done, push your code to GitHub and submit an issue so I know you have completed the assignment.
 
 
-```{r setup 1. Use the geodata package to download bioclimatic variables from the Worldclim (https://www.worldclim.org/) climate data set at 5 arc-minute resolution. Note that unfortunately, we can’t use the worldclim_country function to download data for only Australia, because, for some reason, that function only provides data at 1km x 1km resolution!}
+```{r Use the geodata package to download bioclimatic variables from the Worldclim (https://www.worldclim.org/) climate data set at 5 arc-minute resolution. Note that unfortunately, we can’t use the worldclim_country function to download data for only Australia, because, for some reason, that function only provides data at 1km x 1km resolution!}
 # Download bioclimatic variables at 5 arc-minute resolution (bummer about the worldclim_country bit, though)
 bioclim_data <- worldclim_global(var = "bio", res = 5, path = "C:/Users/Ray.Mroch.NMFS/Documents/Research/Coursework/MEES 698C Spatial Ecology/HW1/HW1")
 
@@ -46,7 +49,7 @@ plot(bioclim_data)
 
 # download the bioclim variables
 bioRasts <- worldclim_global(var="bio", res=5, path=getwd())
-
+names(bioRasts) <- paste0("bio", 1:19)
 #plot bio_1 to have a look at the data
 plot(bioRasts[[1]])
 
@@ -78,7 +81,7 @@ tail(bioclim_stack) #<-OK, there are some numbers in it.
 ausNZ <- vect("C:/Users/Ray.Mroch.NMFS/Documents/Research/Coursework/MEES 698C Spatial Ecology/HW1/oz_nz_aea.shp")
 
 # check CRS of the shapefile, differs from bioRasts!
-crs(ausNZ, describe=T)
+crs(ausNZ, describe = T)
 
 # remove New Zealand
 aus.albers <- subset(ausNZ, ausNZ$NAME == "Australia")
@@ -107,8 +110,8 @@ As we have discussed in class, gridded spatial duplicates are observations that 
 # download the species occurrence data
 xanth <- sp_occurrence(genus = "Xanthorrhoea",
                          species = "australis",
-                         download=T,
-                         geo=T, #indicates that there shoudl be none without coordinates!
+                         download = T,
+                         geo = T, #indicates that there shoudl be none without coordinates!
                          removeZeros = T)
 
 # select points that fall within the Australia polygon
@@ -194,8 +197,6 @@ xanth_cleaned <- xanth_cleaned %>%
   filter(!duplicated(paste(rounded_longitude, rounded_latitude)))
 dim(xanth_cleaned) #593 now, seems good
 
-#trying again for bioclim thing
-xanth.clean.test <- crop(xanth.clean.sf, st_as_sfc(st_bbox(bioRasts.aus)))
 
 #plot to check
 #convert to sf
@@ -203,7 +204,7 @@ xanth.clean.test <- crop(xanth.clean.sf, st_as_sfc(st_bbox(bioRasts.aus)))
 coords <- st_coordinates(xanth_cleaned$geometry)
 
 # Plot the occurrence points on top of the raster
-plot(bioclim_australia[[3]], main = "Bioclimatic Variable with Xanthorrhoea australis Points")
+plot(bioRasts.aus[[3]], main = "Bioclimatic Variable with Xanthorrhoea australis Points")
 points(coords, col = 'blue', pch = 19, cex = 0.7)
 #OK, I think this looks alright
 ```
@@ -223,7 +224,7 @@ dim(xanth.clean.sf) #this is the cleaned dataset.
 # 4. Use your cleaned point occurrence data to extract the bioclimatic variables from the raster stack.
 bio_values <- terra::extract(bioRasts.aus, vect(xanth.clean.sf))
 bioclim.xanth.clean <- cbind(xanth.clean.sf, bio_values)
-#Generate a set of 10,000 background points and extract the bioclimatic variables from the raster stack. Combine the resulting tabel with the table produced in Step #4.
+#5. Generate a set of 10,000 background points and extract the bioclimatic variables from the raster stack. Combine the resulting tabel with the table produced in Step #4.
 set.seed(234)
 #10k random background points
 envBg <- spatSample(bioRasts.aus, size = 10000, 
@@ -239,25 +240,28 @@ bvOcc <- as.data.frame(c(rep(1,nrow(bioclim.xanth.clean)), rep(0, nrow(envBg))))
 xyPres <- as.matrix(st_coordinates(bioclim.xanth.clean$geometry)) #593
 #colnames capitalized for some reason
 colnames(xyPres) <- c("x", "y")
-xyBg <- select(envBg, x, y) #10k
-
+xyBg <- cbind(envBg$x, envBg$y) #10k
+colnames(xyBg) <- c("x", "y")
+xybgcoord <- as.data.frame(coordinates(xyBg))
 #select environmental columns (bio1-19) based on the names (REMEMBER TO USE THE ONE THAT WE JUST Cbound)
-envPres.x <- as.data.frame(select(bioclim.xanth.clean, names(bioRasts.aus)))
-envBg.x <- as.data.frame(select(envBg, names(bioRasts.aus)))
+envPres.x <- bioclim.xanth.clean[, names(bioRasts.aus)]
+envBg.x <- st_as_sf(envBg, coords = c("x", "y"), crs = 4326)
 # not sure why I got so many columns so ...
 # Subset envPres.x by names in envBg.x
 common_vars <- intersect(names(envPres.x), names(envBg.x))
 envPres.x <- envPres.x[, common_vars]
-
+envBg.x <- envBg.x[, common_vars]
 #now make a data.frame
 sdmData <- data.frame(cbind(rbind(xyPres, xyBg), #coords
                             bvOcc,#presence
                             rbind(envPres.x, envBg.x))) #environmental data
 head(sdmData)
 summary(sdmData)
-# Use the vifstep function in the usdm library to remove highly correlated variables from your data table. You will use the remaining variables to fit SDMs. I ended up with 6 uncorrelated bioclimatic variables.
+colnames(sdmData) <- c("x", "y", "pres", "bio1" , "bio2" , "bio3" , "bio4" , "bio5" , "bio6" , "bio7" , "bio8" , "bio9" , "bio10" , "bio11" , "bio12" , "bio13" , "bio14" , "bio15" , "bio16" , "bio17", "bio18", "bio19", "geometry")
+sdmdata_noxy <- sdmData %>% select(-geometry)
+#6. Use the vifstep function in the usdm library to remove highly correlated variables from your data table. You will use the remaining variables to fit SDMs. I ended up with 6 uncorrelated bioclimatic variables.
 #variance inflation factor test (VIF)
-VIF <- vifstep(sdmData, th = 5) #this will show the VIF with less than 5
+VIF <- vifstep(sdmdata_noxy, th = 5) #this will show the VIF with less than 5
 #clean up the rasters for later
 bioRasts.aus.clean <- subset(bioRasts.aus, c("bio2", "bio3", "bio8", "bio9", "bio18", "bio19"))
 #show the results
@@ -268,7 +272,7 @@ dim(sdmData_clean) #removed 4 variables
 
 #colname is kind of clunky
 colnames(sdmData_clean) <- c("x", "y", "pres", "bio1" , "bio2" , "bio3" , "bio4" , "bio5" , "bio6" , "bio7" , "bio8" , "bio9" , "bio10" , "bio11" , "bio12" , "bio13" , "bio16" , "bio17")
-#Divide the occurrence data into 80% training and 20% testing partitions using the ENMeval::get.randomkfold function.
+#7. Divide the occurrence data into 80% training and 20% testing partitions using the ENMeval::get.randomkfold function.
 #set seed for replicability
 set.seed(234)
 
@@ -278,17 +282,31 @@ bv.kfold <- ENMeval::get.randomkfold(occs=subset(sdmData, bvOcc == 1),
 #check it out
 str(bv.kfold)
 table(bv.kfold$occs.grp)
+#8. Make a map showing the training and testing presences and background points as different symbols plotted on top of one of the bioclimatic rasters.
+# Create a new grouping variable
+pts.grp <- ifelse(bv.kfold$occs.grp == 1, "test", "train")
 #evaluate the plot
-evalplot.grps(pts = xyPres,
-              pts.grp = bv.kfold$occs.grp, #k-fold group assignments
-              envs = stack(bioRasts.aus[[2]]))
-#I think I am overthinking this, but the test fold is random, so I think this is as good as it gets
-
-
+evalplot.grps(pts=xyPres, 
+              pts.grp=pts.grp,
+              envs=stack(bioRasts.aus[[19]])) #bio19 because it's best
+# make life a little easier
 selTrainTest <- as.numeric(unlist(bv.kfold))
+
+# create a training dataset by picking all but one of the folds
+sdmData.train <- subset(sdmData, selTrainTest != 1)
+dim(sdmData.train)
+# create a testing dataset by reserving the last fold
+sdmData.test <- subset(sdmData, selTrainTest <= 1)
+dim(sdmData.test)
+
+# make sf versions for plotting
+sdmData.train.sf <- st_as_sf(sdmData.train, coords = c("x", "y"), crs=4326)
+sdmData.test.sf <- st_as_sf(sdmData.test, coords = c("x", "y"), crs=4326)
 #need coordinates of positives
 coordspres <- as.matrix(cbind(sdmData_clean$x, sdmData_clean$y))
 colnames(coordspres) <- c("x","y")
+
+
 #9. Use your training data and the uncorrelated set of bioclimatic rasters to fit and predict a Mahalanobis model (using the mahal function in dismo). Note that mahal predictions are slow, so it may take a few minutes to complete the prediction.
 
 # Fit Mahalanobis model
@@ -305,16 +323,50 @@ x <- x^2
 p_value <- pchisq(x, df = k, lower.tail = FALSE)
 return(p_value)
 })
+mm.prob_df <- as.data.frame(mm.prob, xy = TRUE)
 #spatraster didn't work, converting to df
-ggplot(data = mm.prob_df, aes(x = x, y = y, fill = lyr.1)) +  # Replace 'layer' with the correct column name
+ggplot(data = mm.prob_df, aes(x = x, y = y, fill = lyr.1)) + 
   geom_raster() +
-  scale_fill_gradientn(colors = rgb.tables(1000), na.value = "transparent", name = "Prob") +
-  # Uncomment the following line if you want to overlay geographical boundaries
-  # geom_sf(data = bvCountries, fill = NA) +
+  scale_fill_gradientn(colors = brewer.pal(9, "YlOrRd"), na.value = "transparent", name = "Prob") +
   theme_minimal()
+#cool! They look like they could exist somewhere else, someone's not realizing their whole fundamental niche ...
+# evaluate the model (presences + background)
+?predicts::pa_evaluate
+predAtTrain <- terra::extract(mm.prob, sdmData.train[sdmData.train$pres==1,c("x","y")])$lyr.1
+predAtTest <- terra::extract(mm.prob, sdmData.test[sdmData.test$pres==1,c("x","y")])$lyr.1
+predAtBg <- terra::extract(mm.prob, sdmData.train[sdmData.train$pres==0,c("x","y")])$lyr.1
 
-#######Look at evaluation stuff
-  
+# evaluate using training data
+evalTrain <- predicts::pa_evaluate(p=predAtTrain, # presences
+              a=predAtBg) # background / absences
+evalTrain
+
+# evaluate using test data
+evalTest <- predicts::pa_evaluate(p=predAtTest, # presences
+              a=predAtBg) # background / absences
+evalTest
+
+# let's check model quality using the Boyce Index
+boyceTrain <- ecospat::ecospat.boyce(mm.prob, obs=sdmData.train[sdmData.train$pres==1,c("x","y")])
+boyceTrain
+
+boyceTest <- ecospat::ecospat.boyce(mm.prob, obs=sdmData.test[sdmData.test$pres==1,c("x","y")])
+boyceTest
+
+# AUC-PR
+prTrain <- PRROC::pr.curve(scores.class0 = predAtTrain, 
+                    scores.class1 = predAtBg, 
+                    curve = TRUE)
+prTrain
+
+prTest <- PRROC::pr.curve(scores.class0 = predAtTest, 
+                   scores.class1 = predAtBg, 
+                   curve = TRUE)
+prTest
+
+# To plot the PR curve
+plot(prTrain)
+plot(prTest)
 ```
 
 ```{r maxent}
@@ -325,12 +377,84 @@ bioRastsKeep_brick <- brick(bioRastsKeep)
 filepath <- "C:/Users/Ray.Mroch.NMFS/Documents/Research/Coursework/MEES 698C Spatial Ecology/HW1/HW1/maxent"
 sdmdata.posloc <- as.data.frame(sdmData_clean[sdmData_clean$pres==1, c("x","y")])
 # Fit MaxEnt model
-maxent_model <- MaxEnt(bioRasts.aus.clean, 
-                       xyPres,
-                       path=filepath,#lots of stuff to save
-                       )
+mx <- maxent(
+    x = stack(bioRastsKeep),  # env data as a raster stack
+    p = sdmData.train[sdmData.train$pres == 1, c("x", "y")],  # presence data
+    a = sdmData.train[sdmData.train$pres == 0, c("x", "y")],  # background data
+    path = filepath,  # where to save all the output
+    args = c("responsecurves","jackknife", "replicates=5")
+)
 
-# The fitting might take some time depending on your dataset
 
-
+plot(mx)
+mx
+# predict back to geography
+mxPred <- predict(mx, bioRastsKeep)
+plot(mxPred, col=rgb.tables(1000))
 ```
+
+QUESTION 2: According to your maxent model, which are the two most important variables associated with the distribution of the Austral grass tree? Which variable is least important?
+  According to the Maxent output Bio19 (Coldest quarter precipitation) is the most important contributing 82.2% of the variation, followed by Bio18 (Warmest quarter precipitation) with 8.7% of it. The Bio3 (isothermality) variable contributed least of the models tested with 1% contribution. So, it would seem that water is important to this organism overall.
+
+QUESTION 3: Based on your interpretation of the response curves, what can you say about bioclimatic controls on the distribution of the Austral grass tree?
+  Bio19, the coldest quarter, has a relatively narrow habitat ragne along the spectrum of observations tested, it seems to have an abrupt dropoff (probably near a frost damage threshhold) at the lower end, but it tapers off towards the higher end of the figure. Bio18, the warmest quarter variable, has most observations at the low end, but a slow and steady tapering as temperatures increase. So, I would hypothesize that this plant is sensitive to cold/frost, but increasingly intolerant to warmth along its habitat range. 
+
+QUESTION 4: Compare the predicted distributions from the two SDMs. How are they similar / different? Where do the models over- or under-predict the distribution? What might account for these model “errors”?
+  Both models are generally similar in their predictions. There are high probabilities in Tasmania and Southeastern Australia, with little exclaves in Southwestern Australia where the habitat is suitable, but ostensibly have not been colonized or had seed dispersal opportunities there. The Mahalanobis model has a more favorable overall outlook for its predictions. It predicts a greater overall range of habitat suitability and a higher probability of occurrence where it is positive. As mentioned, these models overpredict the presence in Southwestern Australia. This may account for other factors, the aforementioned lack of dispersal opportunities or maybe they're tasty to rabbits and that is on the otehr side of the rabbit-proof fence.
+
+```{r maxent evaluation}
+#12. Evaluate the mahal and maxent models using the testing data.
+# evaluate the model
+predAtTrain <- raster::extract(mxPred, sdmData.train[sdmData.train$pres == 1, c("x", "y")])
+predAtTest <- terra::extract(mxPred, sdmData.test[sdmData.test$pres == 1 , c("x","y")])
+predAtBg <- terra::extract(mxPred, sdmData.train[sdmData.train$pres == 0 , c("x","y")])
+
+# evaluate using training data
+evalTrain <- pa_evaluate(p=predAtTrain, # presences
+                         a=predAtBg) # background / absences
+evalTrain
+
+# evaluate using test data
+evalTest <- pa_evaluate(p=predAtTest, # presences
+                        a=predAtBg) # background / absences
+evalTest
+
+# let's check model quality using the Boyce Index
+
+#boyce needs rasterstack
+mxPredStack<- stack(mxPred)
+#boyce also needs presence points(pp)
+pptrain <- sdmData.train[sdmData.train$pres == 1, c("x", "y")]
+pptest <- sdmData.train[sdmData.test$pres == 1, c("x", "y")]
+
+boyceTrain <- ecospat.boyce(mxPredStack, obs = pptrain)
+
+boyceTrain <- ecospat.boyce(mxPredStack, obs = pptest)
+boyceTrain
+
+boyceTest <- ecospat.boyce(mxPred, obs=sdmData.test[sdmData.train$pres==1,c("x","y")])
+boyceTest
+
+# AUC-PR
+prTrain <- pr.curve(scores.class0 = predAtTrain, 
+                    scores.class1 = predAtBg, 
+                    curve = TRUE)
+prTrain
+
+prTest <- pr.curve(scores.class0 = predAtTest, 
+                   scores.class1 = predAtBg, 
+                   curve = TRUE)
+prTest
+
+# To plot the PR curve
+plot(prTrain)
+plot(prTest)
+```
+
+QUESTION 5: Briefly discuss the model evaluation metrics. Which model performed best? My AUC values for these models were quite similar even though their predictions were not. If you were a conservation manager and were provided output from these two models, how might you handle this seeming contradiction between the differences in the spatial predictions, but similarity in AUC?
+  There was a high AUC (.981) for the maxent model indicating a good fit, but there was a pretty low correlation between observations and predictions. This could be fine, but it could indicate that there are more considerations to think about: urban or human interactions, other biotic interactions, etc.
+  The mahalanobis model had a similarly high AUC (0.92), indicating a pretty good fit of the model to the data.
+  I think that the variation in the models are something that we see a lot of in biology. I think that the high AUC in both of them could be tempting to someone to include the model as-is. The relatively low values for correlation, though, makes me think that the model could (perhaps) be overfit or have some other diagnistic issue that would warrent more investigation. I would spend more time working to validate the model, and do some sensitivity analyses to see which factors the model is most sensitive to. I would also consider examining whether there are other variables at play that could be impacting the habitat suitability of this species.
+
+QUESTION 6: How might you improve SDMs for the Austral grass tree?
+  The first item may be improving resolution. We could increase the resolution and perhaps allow for finer-scale interpretations that could expose nuances lost at the larger scale we are looking at. We could also add in some biotic interactions. Since we're just looking at climate variables, we are not considering things like competition for nutrients, water, or sunlight, nor are we considering grazers that may browse the tree (or its competition). We could work on the quality of the data. These data were recorded by a variety of sources. This could include a wide variety of data quality issues. We censored a lot of observations, which isn't necessarily a bad thing, but confining our search to the highest-quality observations from systematic transects or surveys may improve statistical rigor that we could apply to our interpretations. We could also determine a way to include things such as climate change trends to see if these changes may be affecting distribution, but that may involve time series analyses. Finally, we can attempt some ensemble modeling, incorporating different techniques into our analysis such as the time series approach or machine learning tools, but I am not ready for all of that yet.
