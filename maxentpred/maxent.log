@@ -1,0 +1,35 @@
+Tue Oct 08 15:44:38 EDT 2024
+MaxEnt version 3.4.3
+Reading file absence
+readGrid: max memory 477626368, total allocated 151519232, free 95480704, used 56038528, increment -22076360
+Reading samples from presence
+Read samples: max memory 477626368, total allocated 150994944, free 102094472, used 48900472, increment -7138056
+Adding samples to background in feature space
+Command line used:  autorun -e C:/Users/Ray.Mroch.NMFS/Documents/Research/Coursework/MEES 698C Spatial Ecology/HW1/HW1/maxentpred/absence -o C:/Users/Ray.Mroch.NMFS/Documents/Research/Coursework/MEES 698C Spatial Ecology/HW1/HW1/maxentpred -s C:/Users/Ray.Mroch.NMFS/Documents/Research/Coursework/MEES 698C Spatial Ecology/HW1/HW1/maxentpred/presence -z
+Command line to repeat: java density.MaxEnt nowarnings noprefixes "outputdirectory=C:/Users/Ray.Mroch.NMFS/Documents/Research/Coursework/MEES 698C Spatial Ecology/HW1/HW1/maxentpred" "samplesfile=C:/Users/Ray.Mroch.NMFS/Documents/Research/Coursework/MEES 698C Spatial Ecology/HW1/HW1/maxentpred/presence" "environmentallayers=C:/Users/Ray.Mroch.NMFS/Documents/Research/Coursework/MEES 698C Spatial Ecology/HW1/HW1/maxentpred/absence" autorun novisible
+Species: species
+Layers: bio18 bio19 bio2 bio3 bio8 bio9
+Layertypes: Continuous Continuous Continuous Continuous Continuous Continuous
+outputdirectory: C:/Users/Ray.Mroch.NMFS/Documents/Research/Coursework/MEES 698C Spatial Ecology/HW1/HW1/maxentpred
+samplesfile: C:/Users/Ray.Mroch.NMFS/Documents/Research/Coursework/MEES 698C Spatial Ecology/HW1/HW1/maxentpred/presence
+environmentallayers: C:/Users/Ray.Mroch.NMFS/Documents/Research/Coursework/MEES 698C Spatial Ecology/HW1/HW1/maxentpred/absence
+autorun: true
+visible: false
+
+getSamples: max memory 477626368, total allocated 150994944, free 98270312, used 52724632, increment 3824160
+Making features
+makeFeatures: max memory 477626368, total allocated 150994944, free 95388056, used 55606888, increment 2882256
+species: 
+Regularization values: linear/quadratic/product: 0.050, categorical: 0.250, threshold: 1.000, hinge: 0.500
+447 samples
+Density: max memory 477626368, total allocated 150994944, free 87009232, used 63985712, increment 8378824
+linearPredictor: max memory 477626368, total allocated 150994944, free 87009232, used 63985712, increment 0
+FeaturedSpace: max memory 477626368, total allocated 150994944, free 87009232, used 63985712, increment 0
+Sequential: max memory 477626368, total allocated 150994944, free 87009232, used 63985712, increment 0
+Initial loss: 9.249945626568541
+Time since start: 10.48
+500: time = 10.376000 loss = 7.032034
+Resulting gain: 2.21791120403119
+Projecting...
+Writing file C:\Users\Ray.Mroch.NMFS\Documents\Research\Coursework\MEES 698C Spatial Ecology\HW1\HW1\maxentpred\species.csv
+Ending
